@@ -5,26 +5,41 @@ const API_BASE = process.env.REACT_APP_API_URL || "https://ids-checker-api.railw
 // ── Trimble Connect 3D Extension ──────────────────────────────────────────────
 // Runs as a 3D Viewer extension, giving access to both project and viewer APIs.
 async function connectToTC() {
-  if (!window.parent || window.parent === window) return null;
+  console.log("Attempting to connect to Trimble Connect...");
+
+  if (!window.parent || window.parent === window) {
+    console.log("Not running in iframe context - dev mode");
+    return null;
+  }
+
   try {
+    console.log("Importing trimble-connect-workspace-api...");
     const WorkspaceAPI = await import("trimble-connect-workspace-api");
+    console.log("WorkspaceAPI imported successfully");
+
     let accessToken = null;
 
+    console.log("Connecting to workspace API...");
     const api = await WorkspaceAPI.connect(
       window.parent,
       (event, args) => {
+        console.log("Received event:", event, args);
         if (event === "extension.accessToken") accessToken = args?.data;
       },
       10000
     );
+    console.log("Connected to workspace API successfully");
 
     // Request access token – needed for file downloads
+    console.log("Requesting access token...");
     const token = await api.extension.requestPermission("accesstoken");
+    console.log("Access token request result:", token);
     if (token && token !== "pending" && token !== "denied") accessToken = token;
 
     return { api, getAccessToken: () => accessToken };
   } catch (e) {
     console.log("TC connect failed (dev mode):", e.message);
+    console.log("Full error:", e);
     return null;
   }
 }
@@ -32,27 +47,38 @@ async function connectToTC() {
 // Get all currently loaded IFC models from the 3D viewer
 async function getLoadedIfcModels(api) {
   try {
+    console.log("Getting loaded models from viewer...");
     // "loaded" filter returns only models currently visible in viewer
     const models = await api.viewer.getModels("loaded");
+    console.log("Found models:", models);
+
     const ifcModels = [];
     for (const model of models) {
       try {
+        console.log("Getting details for model:", model.modelId);
         const file = await api.viewer.getLoadedModel(model.modelId);
+        console.log("Model details:", file);
         if (file?.name?.toLowerCase().endsWith(".ifc")) {
+          console.log("Found IFC model:", file.name);
           ifcModels.push({
             modelId: model.modelId,
             name: file.name,
             fileId: file.id,
             size: file.size,
           });
+        } else {
+          console.log("Model is not IFC:", file?.name);
         }
-      } catch {
+      } catch (e) {
+        console.log("Error getting model details for", model.modelId, ":", e.message);
         // Skip models we can't read
       }
     }
+    console.log("Final IFC models list:", ifcModels);
     return ifcModels;
   } catch (e) {
     console.log("getModels failed:", e.message);
+    console.log("Full error:", e);
     return [];
   }
 }
@@ -386,9 +412,11 @@ export default function IDSChecker() {
   // Connect to TC and detect loaded models
   useEffect(() => {
     (async () => {
+      console.log("Initializing extension...");
       const tcConn = await connectToTC();
 
       if (!tcConn) {
+        console.log("No TC connection - entering dev mode");
         setDevMode(true);
         setLoadedModels(DEV_LOADED_MODELS);
         setProjectIds(DEV_IDS);
@@ -398,15 +426,21 @@ export default function IDSChecker() {
         return;
       }
 
+      console.log("Connected to TC successfully");
       setTc(tcConn);
 
       // Get IFC models currently open in 3D viewer
+      console.log("Getting IFC models...");
       const models = await getLoadedIfcModels(tcConn.api);
+      console.log("Setting loaded models:", models);
       setLoadedModels(models);
 
       // Auto-suggest first loaded model
       if (models.length > 0) {
+        console.log("Auto-selecting first model:", models[0]);
         setSelectedModel(models[0]);
+      } else {
+        console.log("No IFC models found");
       }
 
       setLoadingModels(false);
