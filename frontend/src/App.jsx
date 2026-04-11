@@ -58,6 +58,9 @@ async function getLoadedIfcModels(api) {
         console.log("Getting details for model:", model.id || model.modelId);
         const file = await api.viewer.getLoadedModel(model.id || model.modelId);
         console.log("Model details:", file);
+        console.log("File object keys:", Object.keys(file));
+        console.log("File object:", JSON.stringify(file, null, 2));
+        console.log("File ID:", file.id, "File name:", file.name, "File size:", file.size);
         if (file?.name?.toLowerCase().endsWith(".ifc")) {
           console.log("Found IFC model:", file.name);
           ifcModels.push({
@@ -85,13 +88,29 @@ async function getLoadedIfcModels(api) {
 
 // Download a file from TC using access token
 async function downloadTCFile(accessToken, fileId, fileName) {
-  const res = await fetch(
-    `https://app.connect.trimble.com/tc/api/2.0/files/${fileId}/download`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!res.ok) throw new Error(`Nedlasting feilet: ${res.status}`);
-  const blob = await res.blob();
-  return new File([blob], fileName);
+  console.log("Attempting to download file:", fileId, fileName);
+  const url = `https://app.connect.trimble.com/tc/api/2.0/files/${fileId}/download`;
+  console.log("Download URL:", url);
+
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    console.log("Download response status:", res.status);
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.log("Download error response:", errorText);
+      throw new Error(`Download failed: ${res.status} - ${errorText}`);
+    }
+
+    const blob = await res.blob();
+    console.log("Downloaded blob size:", blob.size);
+    return new File([blob], fileName);
+  } catch (e) {
+    console.log("Download error:", e);
+    throw e;
+  }
 }
 
 // Mark failing objects in the 3D viewer using GUIDs
