@@ -171,13 +171,14 @@ const MarkIcon = () => (
 // ── Reusable UI components ────────────────────────────────────────────────────
 function TabBar({ value, onChange, options }) {
   return (
-    <div style={{ display: "flex", gap: 2, marginBottom: 8, background: "#0f172a", borderRadius: 7, padding: 3 }}>
+    <div style={{ display: "flex", gap: 2, marginBottom: 8, background: "#f3f4f6", borderRadius: 7, padding: 3 }}>
       {options.map(([key, label]) => (
         <button key={key} onClick={() => onChange(key)} style={{
           flex: 1, padding: "5px 0", fontSize: 11, fontWeight: 600, border: "none",
           cursor: "pointer", borderRadius: 5, transition: "all 0.15s", fontFamily: "inherit",
-          background: value === key ? "#1e293b" : "transparent",
-          color: value === key ? "#e2e8f0" : "#64748b",
+          background: value === key ? "#ffffff" : "transparent",
+          color: value === key ? "#1a1a1a" : "#6b7280",
+          boxShadow: value === key ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
         }}>{label}</button>
       ))}
     </div>
@@ -188,16 +189,16 @@ function UploadZone({ file, onFile, accept, color, label }) {
   return (
     <label style={{
       display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-      border: `1.5px dashed ${file ? color : "#1e293b"}`,
+      border: `1.5px dashed ${file ? color : "#d1d5db"}`,
       borderRadius: 8, padding: "20px 14px", cursor: "pointer",
-      background: file ? `${color}08` : "transparent", transition: "all 0.15s",
+      background: file ? `${color}10` : "#fafafa", transition: "all 0.15s",
     }}>
       <input type="file" accept={accept} style={{ display: "none" }}
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
-      <UploadIcon color={file ? color : "#6366f1"} />
+      <UploadIcon color={file ? color : "#0066cc"} />
       {file
         ? <div style={{ fontSize: 12, color, fontWeight: 600 }}>{file.name}</div>
-        : <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
+        : <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>
             Dra og slipp <span style={{ color }}>{label}</span> hit<br />
             <span style={{ fontSize: 10 }}>eller klikk for å velge</span>
           </div>
@@ -211,43 +212,45 @@ function ModelRow({ model, selected, onSelect, badge }) {
     <button onClick={() => onSelect(model)} style={{
       display: "flex", alignItems: "center", gap: 10, width: "100%",
       padding: "8px 10px", borderRadius: 6, border: "none", cursor: "pointer",
-      background: selected ? "#0ea5e910" : "transparent",
-      outline: selected ? "1.5px solid #0ea5e9" : "1.5px solid transparent",
+      background: selected ? "#0066cc10" : "#ffffff",
+      outline: selected ? "1.5px solid #0066cc" : "1.5px solid #e5e7eb",
       transition: "all 0.15s", textAlign: "left", marginBottom: 3,
+      boxShadow: selected ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
     }}>
-      <FileIcon color="#0ea5e9" />
+      <FileIcon color="#0066cc" />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: "#e2e8f0", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: "#1a1a1a", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {model.name}
         </div>
         {badge && (
-          <div style={{ fontSize: 9, marginTop: 2, background: "#0ea5e920", color: "#0ea5e9", borderRadius: 3, padding: "1px 5px", display: "inline-block", fontWeight: 700 }}>
+          <div style={{ fontSize: 9, marginTop: 2, background: "#0066cc20", color: "#0066cc", borderRadius: 3, padding: "1px 5px", display: "inline-block", fontWeight: 700 }}>
             {badge}
           </div>
         )}
       </div>
-      {selected && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#0ea5e9", flexShrink: 0 }} />}
+      {selected && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#0066cc", flexShrink: 0 }} />}
     </button>
   );
 }
 
 function FileRow({ file, selected, onSelect, type }) {
-  const color = type === "ids" ? "#8b5cf6" : "#0ea5e9";
+  const color = type === "ids" ? "#7c3aed" : "#0066cc";
   const date = file.versionDate ? file.versionDate.slice(0, 10) : "";
   return (
     <button onClick={() => onSelect(file)} style={{
       display: "flex", alignItems: "center", gap: 10, width: "100%",
       padding: "8px 10px", borderRadius: 6, border: "none", cursor: "pointer",
-      background: selected ? `${color}10` : "transparent",
-      outline: selected ? `1.5px solid ${color}` : "1.5px solid transparent",
+      background: selected ? `${color}10` : "#ffffff",
+      outline: selected ? `1.5px solid ${color}` : "1.5px solid #e5e7eb",
       transition: "all 0.15s", textAlign: "left", marginBottom: 3,
+      boxShadow: selected ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
     }}>
       <FileIcon color={color} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: "#e2e8f0", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: "#1a1a1a", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {file.name}
         </div>
-        {date && <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>{date}</div>}
+        {date && <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1 }}>{date}</div>}
       </div>
       {selected && <div style={{ width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 }} />}
     </button>
@@ -273,10 +276,11 @@ function SpecRow({ spec, index, onMark, canMark }) {
 
   return (
     <div style={{
-      background: "#0f172a", borderRadius: 8, overflow: "hidden",
-      border: `1px solid ${spec.status === "passed" ? "#16a34a22" : "#dc262622"}`,
+      background: "#ffffff", borderRadius: 8, overflow: "hidden",
+      border: `1px solid ${spec.status === "passed" ? "#dcfce7" : "#fecaca"}`,
       marginBottom: 6, animation: "fadeUp 0.3s ease both",
       animationDelay: `${index * 0.04}s`,
+      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
     }}>
       <button onClick={() => spec.failures?.length > 0 && setOpen(!open)} style={{
         display: "flex", alignItems: "center", gap: 10, width: "100%",
@@ -285,14 +289,14 @@ function SpecRow({ spec, index, onMark, canMark }) {
       }}>
         {spec.status === "passed" ? <CheckIcon /> : <FailIcon />}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#e2e8f0", marginBottom: 2 }}>{spec.name}</div>
-          <div style={{ fontSize: 10, color: "#64748b", fontFamily: "'IBM Plex Mono', monospace" }}>{spec.applicability}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#1a1a1a", marginBottom: 2 }}>{spec.name}</div>
+          <div style={{ fontSize: 10, color: "#6b7280", fontFamily: "'IBM Plex Mono', monospace" }}>{spec.applicability}</div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: spec.status === "passed" ? "#16a34a" : "#dc2626" }}>
             {spec.passed}/{spec.total}
           </div>
-          <div style={{ width: 48, height: 3, background: "#1e293b", borderRadius: 2, marginTop: 3 }}>
+          <div style={{ width: 48, height: 3, background: "#e5e7eb", borderRadius: 2, marginTop: 3 }}>
             <div style={{ width: `${pct}%`, height: "100%", background: spec.status === "passed" ? "#16a34a" : "#dc2626", borderRadius: 2, transition: "width 0.6s ease" }} />
           </div>
         </div>
@@ -300,8 +304,8 @@ function SpecRow({ spec, index, onMark, canMark }) {
       </button>
 
       {open && spec.failures?.length > 0 && (
-        <div style={{ borderTop: "1px solid #1e293b", padding: "8px 12px 10px" }}>
-          <div style={{ fontSize: 10, color: "#64748b", marginBottom: 8 }}>KRAV: {spec.requirement}</div>
+        <div style={{ borderTop: "1px solid #e5e7eb", padding: "8px 12px 10px", background: "#f9fafb" }}>
+          <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 8 }}>KRAV: {spec.requirement}</div>
 
           {spec.failures.map((f, i) => (
             <div key={i} style={{
@@ -309,13 +313,13 @@ function SpecRow({ spec, index, onMark, canMark }) {
               borderBottom: i < spec.failures.length - 1 ? "1px solid #0f172a" : "none",
             }}>
               <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#dc2626", flexShrink: 0 }} />
-              <div style={{ fontSize: 11, color: "#94a3b8", flex: 1 }}>{f.name}</div>
-              <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: "#475569" }}>{f.type}</div>
+              <div style={{ fontSize: 11, color: "#6b7280", flex: 1 }}>{f.name}</div>
+              <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: "#374151" }}>{f.type}</div>
             </div>
           ))}
 
           {spec.more_failures > 0 && (
-            <div style={{ fontSize: 10, color: "#64748b", marginTop: 6 }}>
+            <div style={{ fontSize: 10, color: "#6b7280", marginTop: 6 }}>
               + {spec.more_failures} flere feil ikke vist
             </div>
           )}
@@ -324,8 +328,8 @@ function SpecRow({ spec, index, onMark, canMark }) {
           {canMark && spec.failures.some((f) => f.guid) && (
             <button onClick={handleMark} disabled={marking} style={{
               width: "100%", marginTop: 10, padding: "7px 10px",
-              borderRadius: 6, border: "1px solid #dc262640", background: "#dc262610",
-              color: "#ef4444", fontFamily: "inherit", fontSize: 11, fontWeight: 600,
+              borderRadius: 6, border: "1px solid #dc262640", background: "#fef2f2",
+              color: "#dc2626", fontFamily: "inherit", fontSize: 11, fontWeight: 600,
               cursor: marking ? "not-allowed" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
               transition: "all 0.15s",
@@ -337,7 +341,7 @@ function SpecRow({ spec, index, onMark, canMark }) {
           {markResult && (
             <div style={{
               marginTop: 6, padding: "6px 10px", borderRadius: 5, fontSize: 10,
-              background: markResult.success ? "#16a34a15" : "#dc262615",
+              background: markResult.success ? "#f0fdf4" : "#fef2f2",
               color: markResult.success ? "#16a34a" : "#dc2626",
               border: `1px solid ${markResult.success ? "#16a34a30" : "#dc262630"}`,
             }}>
@@ -481,20 +485,21 @@ try {
     : [];
 
   return (
-    <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: "#080f1a", minHeight: "100vh", color: "#e2e8f0", display: "flex", flexDirection: "column" }}>
+    <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", background: "#ffffff", minHeight: "100vh", color: "#1a1a1a", display: "flex", flexDirection: "column" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 2px; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a1a1a1; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
       `}</style>
 
       {/* Header */}
-      <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid #1e293b", display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(180deg,#0d1b2e,#080f1a)" }}>
-        <div style={{ width: 28, height: 28, borderRadius: 7, background: "linear-gradient(135deg,#6366f1,#0ea5e9)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: 10, background: "#ffffff", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+        <div style={{ width: 28, height: 28, borderRadius: 7, background: "linear-gradient(135deg,#0066cc,#0099ff)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M2 4h10M2 7h6M2 10h8" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
             <circle cx="11" cy="10" r="2.5" stroke="white" strokeWidth="1.2" />
@@ -502,8 +507,8 @@ try {
           </svg>
         </div>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>IDS Regelsjekker</div>
-          <div style={{ fontSize: 10, color: "#475569" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>IDS Regelsjekker</div>
+          <div style={{ fontSize: 10, color: "#6b7280" }}>
             {devMode ? "Utviklingsmodus" : "Trimble Connect 3D"}
           </div>
         </div>
@@ -513,7 +518,7 @@ try {
 
         {/* Step 1 – IFC */}
         <section>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#475569", textTransform: "uppercase", marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#6b7280", textTransform: "uppercase", marginBottom: 8 }}>
             1 · IFC-fil
           </div>
           <TabBar
@@ -524,17 +529,17 @@ try {
 
           {ifcTab === "viewer" ? (
             loadingModels ? (
-              <div style={{ fontSize: 11, color: "#475569", display: "flex", gap: 6, alignItems: "center" }}>
-                <SpinnerIcon color="#6366f1" /> Henter modeller fra viewer…
+              <div style={{ fontSize: 11, color: "#6b7280", display: "flex", gap: 6, alignItems: "center" }}>
+                <SpinnerIcon color="#0066cc" /> Henter modeller fra viewer…
               </div>
             ) : loadedModels.length === 0 ? (
-              <div style={{ fontSize: 11, color: "#475569", padding: "10px 0", lineHeight: 1.6 }}>
+              <div style={{ fontSize: 11, color: "#6b7280", padding: "10px 0", lineHeight: 1.6 }}>
                 Ingen IFC-filer er lastet i 3D-vieweren.{"\n"}Åpne en modell i TC og prøv igjen, eller last opp manuelt.
               </div>
             ) : (
               <>
                 {loadedModels.length === 1 && (
-                  <div style={{ fontSize: 10, color: "#0ea5e9", marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: "#059669", marginBottom: 6 }}>
                     ✓ Fant modell åpen i viewer – foreslår å kjøre sjekk på denne
                   </div>
                 )}
@@ -556,7 +561,7 @@ try {
 
         {/* Step 2 – IDS */}
         <section>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#475569", textTransform: "uppercase", marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#6b7280", textTransform: "uppercase", marginBottom: 8 }}>
             2 · IDS-regelsett
           </div>
           <TabBar
@@ -566,7 +571,7 @@ try {
           />
           {idsTab === "project" ? (
             projectIds.length === 0 ? (
-              <div style={{ fontSize: 11, color: "#475569" }}>Ingen .ids-filer funnet i prosjektet.</div>
+              <div style={{ fontSize: 11, color: "#6b7280" }}>Ingen .ids-filer funnet i prosjektet.</div>
             ) : (
               projectIds.map((f) => (
                 <FileRow key={f.id} file={f} selected={selectedIds?.id === f.id} onSelect={setSelectedIds} type="ids" />
@@ -581,26 +586,27 @@ try {
         <button disabled={!canRun || isRunning} onClick={handleRun} style={{
           padding: "11px 0", borderRadius: 8, border: "none",
           cursor: canRun && !isRunning ? "pointer" : "not-allowed",
-          background: canRun && !isRunning ? "linear-gradient(135deg,#6366f1,#0ea5e9)" : "#1e293b",
-          color: canRun && !isRunning ? "white" : "#334155",
+          background: canRun && !isRunning ? "linear-gradient(135deg,#0066cc,#0099ff)" : "#f3f4f6",
+          color: canRun && !isRunning ? "white" : "#9ca3af",
           fontFamily: "inherit", fontSize: 13, fontWeight: 700,
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           transition: "opacity 0.2s",
+          boxShadow: canRun && !isRunning ? "0 2px 4px rgba(0,102,204,0.2)" : "none",
         }}>
           {isRunning ? <><SpinnerIcon /> {loadingStep}</> : "▶  Kjør IDS-sjekk"}
         </button>
 
         {/* Timer + info */}
         {isRunning && (
-          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: 14, animation: "fadeUp 0.3s ease" }}>
+          <div style={{ background: "#ffffff", border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, animation: "fadeUp 0.3s ease", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#475569", textTransform: "uppercase" }}>Tid brukt</div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#6b7280", textTransform: "uppercase" }}>Tid brukt</div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <circle cx="6" cy="6" r="5" stroke="#6366f1" strokeWidth="1.2" />
-                  <path d="M6 3.5V6l1.5 1.5" stroke="#6366f1" strokeWidth="1.2" strokeLinecap="round" />
+                  <circle cx="6" cy="6" r="5" stroke="#0066cc" strokeWidth="1.2" />
+                  <path d="M6 3.5V6l1.5 1.5" stroke="#0066cc" strokeWidth="1.2" strokeLinecap="round" />
                 </svg>
-                <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace", color: "#6366f1" }}>{timer}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace", color: "#0066cc" }}>{timer}</div>
               </div>
             </div>
             <div style={{ borderTop: "1px solid #1e293b", paddingTop: 10, display: "flex", gap: 8, alignItems: "flex-start" }}>
@@ -618,7 +624,7 @@ try {
 
         {/* Error */}
         {error && (
-          <div style={{ background: "#450a0a", border: "1px solid #dc2626", borderRadius: 8, padding: 12, fontSize: 12, color: "#fca5a5" }}>
+          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: 12, fontSize: 12, color: "#dc2626" }}>
             <strong>Feil:</strong> {error}
           </div>
         )}
@@ -627,19 +633,19 @@ try {
         {results && (
           <div style={{ animation: "fadeUp 0.4s ease" }}>
             {/* Summary */}
-            <div style={{ background: "linear-gradient(135deg,#0d1b2e,#0f172a)", borderRadius: 10, padding: 14, marginBottom: 12, border: "1px solid #1e293b" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#475569", textTransform: "uppercase", marginBottom: 10 }}>Resultat</div>
+            <div style={{ background: "#ffffff", borderRadius: 10, padding: 14, marginBottom: 12, border: "1px solid #e5e7eb", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#6b7280", textTransform: "uppercase", marginBottom: 10 }}>Resultat</div>
               <div style={{ display: "flex", gap: 10 }}>
-                {[["Bestått", results.summary.passed, "#16a34a"], ["Feilet", results.summary.failed, "#dc2626"], ["Totalt", results.summary.total, "#6366f1"]].map(([label, val, color]) => (
-                  <div key={label} style={{ flex: 1, textAlign: "center", background: "#080f1a", borderRadius: 7, padding: "8px 4px" }}>
+                {[["Bestått", results.summary.passed, "#16a34a"], ["Feilet", results.summary.failed, "#dc2626"], ["Totalt", results.summary.total, "#0066cc"]].map(([label, val, color]) => (
+                  <div key={label} style={{ flex: 1, textAlign: "center", background: "#f9fafb", borderRadius: 7, padding: "8px 4px", border: "1px solid #e5e7eb" }}>
                     <div style={{ fontSize: 22, fontWeight: 700, color, fontFamily: "'IBM Plex Mono', monospace" }}>{val}</div>
-                    <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>{label}</div>
+                    <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>{label}</div>
                   </div>
                 ))}
               </div>
               <div style={{ marginTop: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 10, color: "#475569" }}>{activeIfc?.name}</span>
+                  <span style={{ fontSize: 10, color: "#6b7280" }}>{activeIfc?.name}</span>
                   <span style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", fontFamily: "'IBM Plex Mono', monospace" }}>
                     {results.summary.total > 0 ? Math.round((results.summary.passed / results.summary.total) * 100) : 100}%
                   </span>
