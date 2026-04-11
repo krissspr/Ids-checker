@@ -492,7 +492,8 @@ export default function IDSChecker() {
       if (ifcTab === "upload") {
         ifcFile = uploadedIfc;
       } else if (!devMode && token && selectedModel?.fileId) {
-        ifcFile = await downloadTCFile(token, selectedModel.fileId, selectedModel.name);
+        // For now, require manual upload when using viewer integration due to CORS issues
+        throw new Error("Automatisk nedlasting av IFC-filer fra Trimble Connect støttes ikke ennå. Last opp IFC-filen manuelt i stedet.");
       } else {
         // Dev mode placeholder
         ifcFile = new File(["placeholder"], selectedModel?.name || "model.ifc");
@@ -502,7 +503,8 @@ export default function IDSChecker() {
       if (idsTab === "upload") {
         idsFile = uploadedIds;
       } else if (!devMode && token && selectedIds?.id) {
-        idsFile = await downloadTCFile(token, selectedIds.id, selectedIds.name);
+        // For now, require manual upload when using viewer integration due to CORS issues
+        throw new Error("Automatisk nedlasting av IDS-filer fra Trimble Connect støttes ikke ennå. Last opp IDS-filen manuelt i stedet.");
       } else {
         idsFile = new File(["placeholder"], selectedIds?.name || "rules.ids");
       }
@@ -570,7 +572,7 @@ export default function IDSChecker() {
           <TabBar
             value={ifcTab}
             onChange={setIfcTab}
-            options={[["viewer", "Åpen i viewer"], ["upload", "Last opp"]]}
+            options={[["viewer", devMode ? "Åpen i viewer" : "Åpen i viewer (krever manuell opplasting)"], ["upload", "Last opp"]]}
           />
 
           {ifcTab === "viewer" ? (
@@ -613,7 +615,7 @@ export default function IDSChecker() {
           <TabBar
             value={idsTab}
             onChange={setIdsTab}
-            options={[["upload", "Last opp"], ["project", "Fra prosjektet"]]}
+            options={[["upload", "Last opp"], ["project", devMode ? "Fra prosjektet" : "Fra prosjektet (krever manuell opplasting)"]]}
           />
           {idsTab === "project" ? (
             projectIds.length === 0 ? (
