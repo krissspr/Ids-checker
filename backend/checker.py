@@ -4,49 +4,43 @@ import json
 
 
 def run_ids_check(ifc_path: str, ids_path: str) -> dict:
-    """
-    Runs IfcTester validation and returns a structured dict with:
-    - summary: total passed/failed counts
-    - specifications: list of each IDS spec with results and failing instances
-    """
-    # Load IFC model
     ifc_model = ifcopenshell.open(ifc_path)
-
-    # Load and parse IDS file
     specs = ids.open(ids_path)
-
-    # Run validation
     specs.validate(ifc_model)
 
-    # Build structured response
     result_specs = []
 
     for spec in specs.specifications:
         failing_instances = []
 
-        for requirement in spec.requirements:
-            for ifc_entity, results in requirement.failed_entities.items():
-                for entity in results:
-                    # Get a human-readable name for the failing object
-                    name = getattr(entity, "Name", None) or getattr(entity, "LongName", None)
-                    guid = getattr(entity, "GlobalId", None)
+        for entity in spec.failed_entities:
+            try:
+                name = getattr(entity, 'Name', None) or "(uten navn)"
+                guid = getattr(entity, 'GlobalId', None)
+                ifc_type = entity.is_a() if hasattr(entity, 'is_a') else "ukjent"
+            except Exception:
+                name = str(entity)
+                guid = None
+                ifc_type = "ukjent"
+            failing_instances.append({
+                "guid": guid,
+                "type": ifc_type,
+                "name": name,
+            })
 
-                    failing_instances.append({
-                        "guid": guid,
-                        "type": entity.is_a(),
-                        "name": name or "(uten navn)",
-                    })
+        passed = len(spec.passed_entities)
+        failed = len(spec.failed_entities)
+        total = passed + failed
 
-        total = spec.passed_count + spec.failed_count
         result_specs.append({
             "name": spec.name,
             "status": "passed" if spec.status else "failed",
             "applicability": _describe_applicability(spec),
             "requirement": _describe_requirements(spec),
-            "passed": spec.passed_count,
-            "failed": spec.failed_count,
+            "passed": passed,
+            "failed": failed,
             "total": total,
-            "failures": failing_instances[:50],  # cap at 50 per spec
+            "failures": failing_instances[:50],
             "more_failures": max(0, len(failing_instances) - 50),
         })
 
@@ -62,7 +56,53 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
         "specifications": result_specs,
     }
 
+def _get_value(attr):
+    """Safely extract a value regardless of whether it's a string or dict."""
+    if attr is None:
+        return ""
+    if isinstance(attr, str):
+        return attr
+    if isinstance(attr, dict):
+        return attr.get("simpleValue", "") or attr.get("value", "")
+    return str(attr)
 
+def _describe_applicability(spec) -> str:
+    parts = []
+    for facet in spec.applicability:
+        class_name = facet.__class__.__name__
+        if class_name == "Entity":
+            parts.append(_get_value(getattr(facet, "name", "")))
+        elif class_name == "Classification":
+            parts.append(f"Klassifikasjon: {_get_value(getattr(facet, 'value', ''))}")
+        elif class_name == "Property":
+            pset = _get_value(getattr(facet, "propertySet", ""))
+            prop = _get_value(getattr(facet, "baseName", ""))
+            parts.append(f"{pset}.{prop}")
+        else:
+            parts.append(class_name)
+    return ", ".join(filter(None, parts)) or "Alle objekter"
+
+def _describe_requirements(spec) -> str:
+    parts = []
+    for req in spec.requirements:
+        class_name = req.__class__.__name__
+        if class_name == "Property":
+            pset = _get_value(getattr(req, "propertySet", ""))
+            prop = _get_value(getattr(req, "baseName", ""))
+            value = _get_value(getattr(req, "value", ""))
+            if value:
+                parts.append(f"{pset}.{prop} = {value}")
+            else:
+                parts.append(f"{pset}.{prop} er påkrevd")
+        elif class_name == "Attribute":
+            parts.append(f"{_get_value(getattr(req, 'name', ''))} er påkrevd")
+        elif class_name == "Classification":
+            parts.append("Klassifisering er påkrevd")
+        elif class_name == "Material":
+            parts.append("Materiale er påkrevd")
+        else:
+            parts.append(class_name)
+    return "; ".join(filter(None, parts)) or "Se IDS-fil"
 def _describe_applicability(spec) -> str:
     """Returns a human-readable applicability description."""
     parts = []
@@ -73,35 +113,19 @@ def _describe_applicability(spec) -> str:
         elif class_name == "Classification":
             parts.append(f"Klassifikasjon: {getattr(facet, 'value', {}).get('simpleValue', '')}")
         elif class_name == "Property":
-            pset = getattr(facet, "propertySet", {}).get("simpleValue", "")
-            prop = getattr(facet, "baseName", {}).get("simpleValue", "")
+            pset_obj = getattr(facet, "propertySet", {})
+            if isinstance(pset_obj, dict):
+                pset = pset_obj.get("simpleValue", "")
+            else:
+                pset = str(pset_obj)
+            prop_obj = getattr(facet, "baseName", {})
+            if isinstance(prop_obj, dict):
+                prop = prop_obj.get("simpleValue", "")
+            else:
+                prop = str(prop_obj)
             parts.append(f"{pset}.{prop}")
         else:
             parts.append(class_name)
     return ", ".join(filter(None, parts)) or "Alle objekter"
 
 
-def _describe_requirements(spec) -> str:
-    """Returns a human-readable requirements description."""
-    parts = []
-    for req in spec.requirements:
-        class_name = req.__class__.__name__
-        if class_name == "Property":
-            pset = getattr(req, "propertySet", {}).get("simpleValue", "")
-            prop = getattr(req, "baseName", {}).get("simpleValue", "")
-            value = getattr(req, "value", None)
-            if value:
-                val_str = value.get("simpleValue", "")
-                parts.append(f"{pset}.{prop} = {val_str}")
-            else:
-                parts.append(f"{pset}.{prop} er påkrevd")
-        elif class_name == "Attribute":
-            name = getattr(req, "name", {}).get("simpleValue", "")
-            parts.append(f"{name} er påkrevd")
-        elif class_name == "Classification":
-            parts.append("Klassifisering er påkrevd")
-        elif class_name == "Material":
-            parts.append("Materiale er påkrevd")
-        else:
-            parts.append(class_name)
-    return "; ".join(filter(None, parts)) or "Se IDS-fil for detaljer"
