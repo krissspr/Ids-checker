@@ -63,10 +63,13 @@ async function getLoadedIfcModels(api) {
         console.log("File ID:", file.id, "File name:", file.name, "File size:", file.size);
         if (file?.name?.toLowerCase().endsWith(".ifc")) {
           console.log("Found IFC model:", file.name);
+          // Try to find the correct file ID for download
+          const fileId = file.fileId || file.sourceFileId || file.id;
+          console.log("Using file ID for download:", fileId);
           ifcModels.push({
             modelId: model.id || model.modelId,
             name: file.name,
-            fileId: file.id,
+            fileId: fileId,
             size: file.size,
           });
         } else {
