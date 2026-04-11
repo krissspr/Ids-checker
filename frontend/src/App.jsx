@@ -406,9 +406,6 @@ try {
   console.log("getModels ERROR:", e.message);
 }
 
-// Get IFC models currently open in 3D viewer
-const models = await getLoadedIfcModels(tcConn.api);
-
       // Get IFC models currently open in 3D viewer
       const models = await getLoadedIfcModels(tcConn.api);
       setLoadedModels(models);
