@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const API_BASE = process.env.REACT_APP_API_URL || "https://ids-checker-api.railway.app";
+const API_BASE = process.env.REACT_APP_API_URL || "/api";
 
 // ── Trimble Connect 3D Extension ──────────────────────────────────────────────
 // Runs as a 3D Viewer extension, giving access to both project and viewer APIs.
