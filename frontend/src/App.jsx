@@ -55,13 +55,13 @@ async function getLoadedIfcModels(api) {
     const ifcModels = [];
     for (const model of models) {
       try {
-        console.log("Getting details for model:", model.modelId);
-        const file = await api.viewer.getLoadedModel(model.modelId);
+        console.log("Getting details for model:", model.id || model.modelId);
+        const file = await api.viewer.getLoadedModel(model.id || model.modelId);
         console.log("Model details:", file);
         if (file?.name?.toLowerCase().endsWith(".ifc")) {
           console.log("Found IFC model:", file.name);
           ifcModels.push({
-            modelId: model.modelId,
+            modelId: model.id || model.modelId,
             name: file.name,
             fileId: file.id,
             size: file.size,
@@ -70,7 +70,7 @@ async function getLoadedIfcModels(api) {
           console.log("Model is not IFC:", file?.name);
         }
       } catch (e) {
-        console.log("Error getting model details for", model.modelId, ":", e.message);
+        console.log("Error getting model details for", model.id || model.modelId, ":", e.message);
         // Skip models we can't read
       }
     }
