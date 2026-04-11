@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://ids-checker-api.railway.app";
 
-// ── Trimble Connect integration ───────────────────────────────────────────────
+// ── Trimble Connect 3D Extension ──────────────────────────────────────────────
+// Runs as a 3D Viewer extension, giving access to both project and viewer APIs.
 async function connectToTC() {
   if (!window.parent || window.parent === window) return null;
   try {
@@ -12,26 +13,14 @@ async function connectToTC() {
     const api = await WorkspaceAPI.connect(
       window.parent,
       (event, args) => {
-        if (event === "extension.accessToken") {
-          accessToken = args?.data;
-        }
+        if (event === "extension.accessToken") accessToken = args?.data;
       },
       10000
     );
 
-    // Set up menu so TC shows the extension in sidebar
-    await api.ui.setMenu({
-      title: "IDS Regelsjekker",
-      icon: "",
-      command: "ids_checker",
-      subMenus: [],
-    });
-
-    // Request access token from TC
+    // Request access token – needed for file downloads
     const token = await api.extension.requestPermission("accesstoken");
-    if (token && token !== "pending" && token !== "denied") {
-      accessToken = token;
-    }
+    if (token && token !== "pending" && token !== "denied") accessToken = token;
 
     return { api, getAccessToken: () => accessToken };
   } catch (e) {
@@ -40,42 +29,100 @@ async function connectToTC() {
   }
 }
 
-async function fetchProjectFiles(accessToken, projectId) {
-  // Use TC REST API directly with the access token
-  const res = await fetch(
-    `https://app.connect.trimble.com/tc/api/2.0/projects/${projectId}/files`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` },
+// Get all currently loaded IFC models from the 3D viewer
+async function getLoadedIfcModels(api) {
+  try {
+    // "loaded" filter returns only models currently visible in viewer
+    const models = await api.viewer.getModels("loaded");
+    const ifcModels = [];
+    for (const model of models) {
+      try {
+        const file = await api.viewer.getLoadedModel(model.modelId);
+        if (file?.name?.toLowerCase().endsWith(".ifc")) {
+          ifcModels.push({
+            modelId: model.modelId,
+            name: file.name,
+            fileId: file.id,
+            size: file.size,
+          });
+        }
+      } catch {
+        // Skip models we can't read
+      }
     }
-  );
-  if (!res.ok) throw new Error(`TC API feil: ${res.status}`);
-  const data = await res.json();
-  const all = data?.list || data?.files || [];
-  return {
-    ifcFiles: all.filter((f) => f.name?.toLowerCase().endsWith(".ifc")),
-    idsFiles: all.filter((f) => f.name?.toLowerCase().endsWith(".ids")),
-  };
+    return ifcModels;
+  } catch (e) {
+    console.log("getModels failed:", e.message);
+    return [];
+  }
 }
 
-async function downloadTCFile(accessToken, file) {
+// Download a file from TC using access token
+async function downloadTCFile(accessToken, fileId, fileName) {
   const res = await fetch(
-    `https://app.connect.trimble.com/tc/api/2.0/files/${file.id}/download`,
+    `https://app.connect.trimble.com/tc/api/2.0/files/${fileId}/download`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!res.ok) throw new Error(`Nedlasting feilet: ${res.status}`);
   const blob = await res.blob();
-  return new File([blob], file.name);
+  return new File([blob], fileName);
+}
+
+// Mark failing objects in the 3D viewer using GUIDs
+async function markObjectsInViewer(api, modelId, guids) {
+  try {
+    // Convert IFC GlobalIds (external) to viewer runtime IDs
+    const runtimeIds = await api.viewer.convertToObjectRuntimeIds(modelId, guids);
+    const validIds = runtimeIds.filter((id) => id != null);
+
+    if (validIds.length === 0) {
+      return { success: false, message: "Ingen objekter funnet i visningen" };
+    }
+
+    // Set selection – "set" replaces current selection
+    await api.viewer.setSelection(
+      { modelObjectIds: [{ modelId, objectRuntimeIds: validIds }] },
+      "set"
+    );
+
+    // Zoom camera to fit selected objects
+    await api.viewer.setCamera(
+      { modelObjectIds: [{ modelId, objectRuntimeIds: validIds }] },
+      { animationTime: 500 }
+    );
+
+    return { success: true, count: validIds.length };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
 }
 
 // ── Mock data for dev mode ────────────────────────────────────────────────────
-const DEV_IFC = [
-  { id: "1", name: "Arkitektur_K11.ifc", size: 18400000, versionDate: "2025-04-05" },
-  { id: "2", name: "RIB_konstruksjon.ifc", size: 9100000, versionDate: "2025-04-03" },
+const DEV_LOADED_MODELS = [
+  { modelId: "mock-1", name: "Arkitektur_K11.ifc", fileId: "1", size: 18400000 },
 ];
 const DEV_IDS = [
   { id: "a", name: "Byggherre_krav_v2.ids", versionDate: "2025-03-28" },
   { id: "b", name: "LOD300_leveranse.ids", versionDate: "2025-02-15" },
 ];
+
+// ── Timer hook ────────────────────────────────────────────────────────────────
+function useTimer(running) {
+  const [seconds, setSeconds] = useState(0);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (running) {
+      setSeconds(0);
+      ref.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    } else {
+      clearInterval(ref.current);
+    }
+    return () => clearInterval(ref.current);
+  }, [running]);
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const CheckIcon = () => (
@@ -102,24 +149,90 @@ const ChevronIcon = ({ open }) => (
     <path d="M4 2l4 4-4 4" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
-const UploadIcon = () => (
+const UploadIcon = ({ color = "#6366f1" }) => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-    <path d="M9 12V4M6 7l3-3 3 3" stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M3 14h12" stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M9 12V4M6 7l3-3 3 3" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3 14h12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 );
-const SpinnerIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 20 20" fill="none"
-    style={{ animation: "spin 0.9s linear infinite" }}>
+const SpinnerIcon = ({ color = "white" }) => (
+  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={{ animation: "spin 0.9s linear infinite" }}>
     <circle cx="10" cy="10" r="8" stroke="#334155" strokeWidth="2" />
-    <path d="M10 2a8 8 0 018 8" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" />
+    <path d="M10 2a8 8 0 018 8" stroke={color} strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+const MarkIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M3.5 6l2 2 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
-// ── FileRow ──────────────────────────────────────────────────────────────────
+// ── Reusable UI components ────────────────────────────────────────────────────
+function TabBar({ value, onChange, options }) {
+  return (
+    <div style={{ display: "flex", gap: 2, marginBottom: 8, background: "#0f172a", borderRadius: 7, padding: 3 }}>
+      {options.map(([key, label]) => (
+        <button key={key} onClick={() => onChange(key)} style={{
+          flex: 1, padding: "5px 0", fontSize: 11, fontWeight: 600, border: "none",
+          cursor: "pointer", borderRadius: 5, transition: "all 0.15s", fontFamily: "inherit",
+          background: value === key ? "#1e293b" : "transparent",
+          color: value === key ? "#e2e8f0" : "#64748b",
+        }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+function UploadZone({ file, onFile, accept, color, label }) {
+  return (
+    <label style={{
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+      border: `1.5px dashed ${file ? color : "#1e293b"}`,
+      borderRadius: 8, padding: "20px 14px", cursor: "pointer",
+      background: file ? `${color}08` : "transparent", transition: "all 0.15s",
+    }}>
+      <input type="file" accept={accept} style={{ display: "none" }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
+      <UploadIcon color={file ? color : "#6366f1"} />
+      {file
+        ? <div style={{ fontSize: 12, color, fontWeight: 600 }}>{file.name}</div>
+        : <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
+            Dra og slipp <span style={{ color }}>{label}</span> hit<br />
+            <span style={{ fontSize: 10 }}>eller klikk for å velge</span>
+          </div>
+      }
+    </label>
+  );
+}
+
+function ModelRow({ model, selected, onSelect, badge }) {
+  return (
+    <button onClick={() => onSelect(model)} style={{
+      display: "flex", alignItems: "center", gap: 10, width: "100%",
+      padding: "8px 10px", borderRadius: 6, border: "none", cursor: "pointer",
+      background: selected ? "#0ea5e910" : "transparent",
+      outline: selected ? "1.5px solid #0ea5e9" : "1.5px solid transparent",
+      transition: "all 0.15s", textAlign: "left", marginBottom: 3,
+    }}>
+      <FileIcon color="#0ea5e9" />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: "#e2e8f0", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {model.name}
+        </div>
+        {badge && (
+          <div style={{ fontSize: 9, marginTop: 2, background: "#0ea5e920", color: "#0ea5e9", borderRadius: 3, padding: "1px 5px", display: "inline-block", fontWeight: 700 }}>
+            {badge}
+          </div>
+        )}
+      </div>
+      {selected && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#0ea5e9", flexShrink: 0 }} />}
+    </button>
+  );
+}
+
 function FileRow({ file, selected, onSelect, type }) {
-  const color = type === "ifc" ? "#0ea5e9" : "#8b5cf6";
-  const size = file.size ? `${(file.size / 1024 / 1024).toFixed(1)} MB · ` : "";
+  const color = type === "ids" ? "#8b5cf6" : "#0ea5e9";
   const date = file.versionDate ? file.versionDate.slice(0, 10) : "";
   return (
     <button onClick={() => onSelect(file)} style={{
@@ -134,17 +247,30 @@ function FileRow({ file, selected, onSelect, type }) {
         <div style={{ fontSize: 12, fontWeight: 500, color: "#e2e8f0", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {file.name}
         </div>
-        <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>{size}{date}</div>
+        {date && <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>{date}</div>}
       </div>
       {selected && <div style={{ width: 7, height: 7, borderRadius: "50%", background: color, flexShrink: 0 }} />}
     </button>
   );
 }
 
-// ── SpecRow ──────────────────────────────────────────────────────────────────
-function SpecRow({ spec, index }) {
+// ── SpecRow with "Mark in TC" button ─────────────────────────────────────────
+function SpecRow({ spec, index, onMark, canMark }) {
   const [open, setOpen] = useState(false);
+  const [marking, setMarking] = useState(false);
+  const [markResult, setMarkResult] = useState(null);
   const pct = spec.total > 0 ? Math.round((spec.passed / spec.total) * 100) : 100;
+
+  const handleMark = async () => {
+    if (!onMark || marking) return;
+    setMarking(true);
+    setMarkResult(null);
+    const guids = spec.failures.map((f) => f.guid).filter(Boolean);
+    const result = await onMark(guids);
+    setMarkResult(result);
+    setMarking(false);
+  };
+
   return (
     <div style={{
       background: "#0f172a", borderRadius: 8, overflow: "hidden",
@@ -175,7 +301,8 @@ function SpecRow({ spec, index }) {
 
       {open && spec.failures?.length > 0 && (
         <div style={{ borderTop: "1px solid #1e293b", padding: "8px 12px 10px" }}>
-          <div style={{ fontSize: 10, color: "#64748b", marginBottom: 6 }}>KRAV: {spec.requirement}</div>
+          <div style={{ fontSize: 10, color: "#64748b", marginBottom: 8 }}>KRAV: {spec.requirement}</div>
+
           {spec.failures.map((f, i) => (
             <div key={i} style={{
               display: "flex", gap: 8, alignItems: "center", padding: "4px 0",
@@ -186,9 +313,37 @@ function SpecRow({ spec, index }) {
               <div style={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace", color: "#475569" }}>{f.type}</div>
             </div>
           ))}
+
           {spec.more_failures > 0 && (
             <div style={{ fontSize: 10, color: "#64748b", marginTop: 6 }}>
               + {spec.more_failures} flere feil ikke vist
+            </div>
+          )}
+
+          {/* Mark in TC button */}
+          {canMark && spec.failures.some((f) => f.guid) && (
+            <button onClick={handleMark} disabled={marking} style={{
+              width: "100%", marginTop: 10, padding: "7px 10px",
+              borderRadius: 6, border: "1px solid #dc262640", background: "#dc262610",
+              color: "#ef4444", fontFamily: "inherit", fontSize: 11, fontWeight: 600,
+              cursor: marking ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              transition: "all 0.15s",
+            }}>
+              {marking ? <><SpinnerIcon color="#ef4444" /> Markerer…</> : <><MarkIcon /> Marker {spec.failures.length} objekter i TC</>}
+            </button>
+          )}
+
+          {markResult && (
+            <div style={{
+              marginTop: 6, padding: "6px 10px", borderRadius: 5, fontSize: 10,
+              background: markResult.success ? "#16a34a15" : "#dc262615",
+              color: markResult.success ? "#16a34a" : "#dc2626",
+              border: `1px solid ${markResult.success ? "#16a34a30" : "#dc262630"}`,
+            }}>
+              {markResult.success
+                ? `✓ ${markResult.count} objekter markert i visningen`
+                : `✕ ${markResult.message}`}
             </div>
           )}
         </div>
@@ -199,70 +354,88 @@ function SpecRow({ spec, index }) {
 
 // ── Main App ─────────────────────────────────────────────────────────────────
 export default function IDSChecker() {
-  const [tc, setTc] = useState(null); // { api, getAccessToken }
-  const [project, setProject] = useState(null);
-  const [projectIfc, setProjectIfc] = useState([]);
-  const [projectIds, setProjectIds] = useState([]);
-  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [tc, setTc] = useState(null);
   const [devMode, setDevMode] = useState(false);
 
-  const [selectedIfc, setSelectedIfc] = useState(null);
+  // IFC model state – loaded from viewer OR uploaded
+  const [loadedModels, setLoadedModels] = useState([]);  // from TC viewer
+  const [selectedModel, setSelectedModel] = useState(null); // TC model object
   const [uploadedIfc, setUploadedIfc] = useState(null);
-  const [ifcTab, setIfcTab] = useState("project");
+  const [ifcTab, setIfcTab] = useState("viewer");
+  const [loadingModels, setLoadingModels] = useState(true);
+
+  // IDS state
+  const [projectIds, setProjectIds] = useState([]);
   const [selectedIds, setSelectedIds] = useState(null);
   const [uploadedIds, setUploadedIds] = useState(null);
-  const [idsTab, setIdsTab] = useState("project");
+  const [idsTab, setIdsTab] = useState("upload");
 
+  // Validation state
+  const [isRunning, setIsRunning] = useState(false);
   const [loadingStep, setLoadingStep] = useState(null);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [filterFailed, setFilterFailed] = useState(false);
 
+  const timer = useTimer(isRunning);
+
+  // Connect to TC and detect loaded models
   useEffect(() => {
     (async () => {
       const tcConn = await connectToTC();
 
       if (!tcConn) {
-        // Dev mode
         setDevMode(true);
-        setProjectIfc(DEV_IFC);
+        setLoadedModels(DEV_LOADED_MODELS);
         setProjectIds(DEV_IDS);
-        setLoadingFiles(false);
+        // Auto-select first model in dev mode
+        setSelectedModel(DEV_LOADED_MODELS[0]);
+        setLoadingModels(false);
         return;
       }
 
       setTc(tcConn);
 
-      try {
-        const proj = await tcConn.api.project.getCurrentProject();
-        setProject(proj);
+      // MIDLERTIDIG DEBUG - slett etter testing
+try {
+  const all = await tcConn.api.viewer.getModels();
+  console.log("ALL MODELS:", JSON.stringify(all));
+  const loaded = await tcConn.api.viewer.getModels("loaded");
+  console.log("LOADED MODELS:", JSON.stringify(loaded));
+} catch(e) {
+  console.log("getModels ERROR:", e.message);
+}
 
-        // Wait briefly for access token to arrive
-        await new Promise((r) => setTimeout(r, 1500));
-        const token = tcConn.getAccessToken();
+// Get IFC models currently open in 3D viewer
+const models = await getLoadedIfcModels(tcConn.api);
 
-        if (token && proj?.id) {
-          const { ifcFiles, idsFiles } = await fetchProjectFiles(token, proj.id);
-          setProjectIfc(ifcFiles);
-          setProjectIds(idsFiles);
-        } else {
-          setError("Kunne ikke hente access token fra Trimble Connect.");
-        }
-      } catch (e) {
-        setError("Feil ved henting av prosjektfiler: " + e.message);
+      // Get IFC models currently open in 3D viewer
+      const models = await getLoadedIfcModels(tcConn.api);
+      setLoadedModels(models);
+
+      // Auto-suggest first loaded model
+      if (models.length > 0) {
+        setSelectedModel(models[0]);
       }
 
-      setLoadingFiles(false);
+      setLoadingModels(false);
     })();
   }, []);
 
-  const activeIfc = ifcTab === "upload" ? uploadedIfc : selectedIfc;
+  const activeIfc = ifcTab === "upload" ? uploadedIfc : selectedModel;
   const activeIds = idsTab === "upload" ? uploadedIds : selectedIds;
   const canRun = activeIfc && activeIds;
+  const canMark = !devMode && tc && selectedModel && ifcTab === "viewer";
+
+  const handleMark = async (guids) => {
+    if (!tc || !selectedModel) return { success: false, message: "Ingen modell valgt" };
+    return await markObjectsInViewer(tc.api, selectedModel.modelId, guids);
+  };
 
   const handleRun = async () => {
     setError(null);
     setResults(null);
+    setIsRunning(true);
 
     try {
       let ifcFile, idsFile;
@@ -271,19 +444,20 @@ export default function IDSChecker() {
       setLoadingStep("Laster IFC-fil…");
       if (ifcTab === "upload") {
         ifcFile = uploadedIfc;
-      } else if (!devMode && token) {
-        ifcFile = await downloadTCFile(token, activeIfc);
+      } else if (!devMode && token && selectedModel?.fileId) {
+        ifcFile = await downloadTCFile(token, selectedModel.fileId, selectedModel.name);
       } else {
-        ifcFile = new File(["placeholder"], activeIfc.name);
+        // Dev mode placeholder
+        ifcFile = new File(["placeholder"], selectedModel?.name || "model.ifc");
       }
 
       setLoadingStep("Henter IDS-regelsett…");
       if (idsTab === "upload") {
         idsFile = uploadedIds;
-      } else if (!devMode && token) {
-        idsFile = await downloadTCFile(token, selectedIds);
+      } else if (!devMode && token && selectedIds?.id) {
+        idsFile = await downloadTCFile(token, selectedIds.id, selectedIds.name);
       } else {
-        idsFile = new File(["placeholder"], selectedIds.name);
+        idsFile = new File(["placeholder"], selectedIds?.name || "rules.ids");
       }
 
       setLoadingStep("Validerer mot IDS-regler…");
@@ -296,19 +470,17 @@ export default function IDSChecker() {
         const detail = await res.json().catch(() => ({}));
         throw new Error(detail?.detail || `Server svarte med ${res.status}`);
       }
-
       setResults(await res.json());
     } catch (e) {
       setError(e.message);
     } finally {
+      setIsRunning(false);
       setLoadingStep(null);
     }
   };
 
   const specs = results
-    ? filterFailed
-      ? results.specifications.filter((s) => s.status === "failed")
-      : results.specifications
+    ? filterFailed ? results.specifications.filter((s) => s.status === "failed") : results.specifications
     : [];
 
   return (
@@ -335,7 +507,7 @@ export default function IDSChecker() {
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>IDS Regelsjekker</div>
           <div style={{ fontSize: 10, color: "#475569" }}>
-            {devMode ? "Utviklingsmodus" : project ? `TC: ${project.name}` : "Kobler til TC…"}
+            {devMode ? "Utviklingsmodus" : "Trimble Connect 3D"}
           </div>
         </div>
       </div>
@@ -347,48 +519,41 @@ export default function IDSChecker() {
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#475569", textTransform: "uppercase", marginBottom: 8 }}>
             1 · IFC-fil
           </div>
-          <div style={{ display: "flex", gap: 2, marginBottom: 8, background: "#0f172a", borderRadius: 7, padding: 3 }}>
-            {[["project", "Fra prosjektet"], ["upload", "Last opp"]].map(([key, label]) => (
-              <button key={key} onClick={() => setIfcTab(key)} style={{
-                flex: 1, padding: "5px 0", fontSize: 11, fontWeight: 600, border: "none",
-                cursor: "pointer", borderRadius: 5, transition: "all 0.15s", fontFamily: "inherit",
-                background: ifcTab === key ? "#1e293b" : "transparent",
-                color: ifcTab === key ? "#e2e8f0" : "#64748b",
-              }}>{label}</button>
-            ))}
-          </div>
+          <TabBar
+            value={ifcTab}
+            onChange={setIfcTab}
+            options={[["viewer", "Åpen i viewer"], ["upload", "Last opp"]]}
+          />
 
-          {ifcTab === "project" ? (
-            loadingFiles ? (
+          {ifcTab === "viewer" ? (
+            loadingModels ? (
               <div style={{ fontSize: 11, color: "#475569", display: "flex", gap: 6, alignItems: "center" }}>
-                <SpinnerIcon /> Henter filer…
+                <SpinnerIcon color="#6366f1" /> Henter modeller fra viewer…
               </div>
-            ) : projectIfc.length === 0 ? (
-              <div style={{ fontSize: 11, color: "#475569" }}>Ingen IFC-filer funnet i prosjektet.</div>
+            ) : loadedModels.length === 0 ? (
+              <div style={{ fontSize: 11, color: "#475569", padding: "10px 0", lineHeight: 1.6 }}>
+                Ingen IFC-filer er lastet i 3D-vieweren.{"\n"}Åpne en modell i TC og prøv igjen, eller last opp manuelt.
+              </div>
             ) : (
-              projectIfc.map((f) => (
-                <FileRow key={f.id} file={f} selected={selectedIfc?.id === f.id} onSelect={setSelectedIfc} type="ifc" />
-              ))
+              <>
+                {loadedModels.length === 1 && (
+                  <div style={{ fontSize: 10, color: "#0ea5e9", marginBottom: 6 }}>
+                    ✓ Fant modell åpen i viewer – foreslår å kjøre sjekk på denne
+                  </div>
+                )}
+                {loadedModels.map((m) => (
+                  <ModelRow
+                    key={m.modelId}
+                    model={m}
+                    selected={selectedModel?.modelId === m.modelId}
+                    onSelect={setSelectedModel}
+                    badge={loadedModels.length === 1 ? "Aktiv i viewer" : null}
+                  />
+                ))}
+              </>
             )
           ) : (
-            <label style={{
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-              border: `1.5px dashed ${uploadedIfc ? "#0ea5e9" : "#1e293b"}`,
-              borderRadius: 8, padding: "20px 14px", cursor: "pointer",
-              background: uploadedIfc ? "#0ea5e908" : "transparent",
-            }}>
-              <input type="file" accept=".ifc" style={{ display: "none" }}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) setUploadedIfc(f); }} />
-              <UploadIcon />
-              {uploadedIfc ? (
-                <div style={{ fontSize: 12, color: "#0ea5e9", fontWeight: 600 }}>{uploadedIfc.name}</div>
-              ) : (
-                <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
-                  Dra og slipp <span style={{ color: "#0ea5e9" }}>.ifc-fil</span> hit<br />
-                  <span style={{ fontSize: 10 }}>eller klikk for å velge</span>
-                </div>
-              )}
-            </label>
+            <UploadZone file={uploadedIfc} onFile={setUploadedIfc} accept=".ifc" color="#0ea5e9" label=".ifc-fil" />
           )}
         </section>
 
@@ -397,19 +562,13 @@ export default function IDSChecker() {
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#475569", textTransform: "uppercase", marginBottom: 8 }}>
             2 · IDS-regelsett
           </div>
-          <div style={{ display: "flex", gap: 2, marginBottom: 8, background: "#0f172a", borderRadius: 7, padding: 3 }}>
-            {[["project", "Fra prosjektet"], ["upload", "Last opp"]].map(([key, label]) => (
-              <button key={key} onClick={() => setIdsTab(key)} style={{
-                flex: 1, padding: "5px 0", fontSize: 11, fontWeight: 600, border: "none",
-                cursor: "pointer", borderRadius: 5, transition: "all 0.15s", fontFamily: "inherit",
-                background: idsTab === key ? "#1e293b" : "transparent",
-                color: idsTab === key ? "#e2e8f0" : "#64748b",
-              }}>{label}</button>
-            ))}
-          </div>
-
+          <TabBar
+            value={idsTab}
+            onChange={setIdsTab}
+            options={[["upload", "Last opp"], ["project", "Fra prosjektet"]]}
+          />
           {idsTab === "project" ? (
-            loadingFiles ? null : projectIds.length === 0 ? (
+            projectIds.length === 0 ? (
               <div style={{ fontSize: 11, color: "#475569" }}>Ingen .ids-filer funnet i prosjektet.</div>
             ) : (
               projectIds.map((f) => (
@@ -417,39 +576,48 @@ export default function IDSChecker() {
               ))
             )
           ) : (
-            <label style={{
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-              border: `1.5px dashed ${uploadedIds ? "#8b5cf6" : "#1e293b"}`,
-              borderRadius: 8, padding: "20px 14px", cursor: "pointer",
-              background: uploadedIds ? "#8b5cf608" : "transparent",
-            }}>
-              <input type="file" accept=".ids" style={{ display: "none" }}
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) setUploadedIds(f); }} />
-              <UploadIcon />
-              {uploadedIds ? (
-                <div style={{ fontSize: 12, color: "#8b5cf6", fontWeight: 600 }}>{uploadedIds.name}</div>
-              ) : (
-                <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>
-                  Dra og slipp <span style={{ color: "#8b5cf6" }}>.ids-fil</span> hit<br />
-                  <span style={{ fontSize: 10 }}>eller klikk for å velge</span>
-                </div>
-              )}
-            </label>
+            <UploadZone file={uploadedIds} onFile={setUploadedIds} accept=".ids" color="#8b5cf6" label=".ids-fil" />
           )}
         </section>
 
         {/* Run button */}
-        <button disabled={!canRun || !!loadingStep} onClick={handleRun} style={{
+        <button disabled={!canRun || isRunning} onClick={handleRun} style={{
           padding: "11px 0", borderRadius: 8, border: "none",
-          cursor: canRun && !loadingStep ? "pointer" : "not-allowed",
-          background: canRun && !loadingStep ? "linear-gradient(135deg,#6366f1,#0ea5e9)" : "#1e293b",
-          color: canRun && !loadingStep ? "white" : "#334155",
+          cursor: canRun && !isRunning ? "pointer" : "not-allowed",
+          background: canRun && !isRunning ? "linear-gradient(135deg,#6366f1,#0ea5e9)" : "#1e293b",
+          color: canRun && !isRunning ? "white" : "#334155",
           fontFamily: "inherit", fontSize: 13, fontWeight: 700,
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           transition: "opacity 0.2s",
         }}>
-          {loadingStep ? <><SpinnerIcon /> {loadingStep}</> : "▶  Kjør IDS-sjekk"}
+          {isRunning ? <><SpinnerIcon /> {loadingStep}</> : "▶  Kjør IDS-sjekk"}
         </button>
+
+        {/* Timer + info */}
+        {isRunning && (
+          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: 14, animation: "fadeUp 0.3s ease" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#475569", textTransform: "uppercase" }}>Tid brukt</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <circle cx="6" cy="6" r="5" stroke="#6366f1" strokeWidth="1.2" />
+                  <path d="M6 3.5V6l1.5 1.5" stroke="#6366f1" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+                <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace", color: "#6366f1" }}>{timer}</div>
+              </div>
+            </div>
+            <div style={{ borderTop: "1px solid #1e293b", paddingTop: 10, display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+                <circle cx="7" cy="7" r="6" stroke="#b45309" strokeWidth="1.2" />
+                <path d="M7 4.5V7" stroke="#b45309" strokeWidth="1.2" strokeLinecap="round" />
+                <circle cx="7" cy="9.5" r="0.7" fill="#b45309" />
+              </svg>
+              <div style={{ fontSize: 11, color: "#92400e", lineHeight: 1.5 }}>
+                Store IFC-filer kan ta <strong style={{ color: "#b45309" }}>1–3 minutter</strong>. Du kan fortsette å jobbe i TC mens sjekken kjører.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -461,6 +629,7 @@ export default function IDSChecker() {
         {/* Results */}
         {results && (
           <div style={{ animation: "fadeUp 0.4s ease" }}>
+            {/* Summary */}
             <div style={{ background: "linear-gradient(135deg,#0d1b2e,#0f172a)", borderRadius: 10, padding: 14, marginBottom: 12, border: "1px solid #1e293b" }}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#475569", textTransform: "uppercase", marginBottom: 10 }}>Resultat</div>
               <div style={{ display: "flex", gap: 10 }}>
@@ -484,6 +653,7 @@ export default function IDSChecker() {
               </div>
             </div>
 
+            {/* Filter + canMark info */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#475569", textTransform: "uppercase" }}>
                 Spesifikasjoner ({specs.length})
@@ -499,7 +669,21 @@ export default function IDSChecker() {
               </button>
             </div>
 
-            {specs.map((spec, i) => <SpecRow key={spec.name} spec={spec} index={i} />)}
+            {canMark && (
+              <div style={{ fontSize: 10, color: "#0ea5e9", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                <MarkIcon /> Klikk på en feilet regel for å markere objekter i viewer
+              </div>
+            )}
+
+            {specs.map((spec, i) => (
+              <SpecRow
+                key={spec.name}
+                spec={spec}
+                index={i}
+                onMark={canMark ? handleMark : null}
+                canMark={canMark}
+              />
+            ))}
           </div>
         )}
       </div>

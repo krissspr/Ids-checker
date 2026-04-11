@@ -1,6 +1,5 @@
 import ifcopenshell
-from ifctester import ids, reporter
-import json
+from ifctester import ids
 
 
 def run_ids_check(ifc_path: str, ids_path: str) -> dict:
@@ -56,8 +55,8 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
         "specifications": result_specs,
     }
 
-def _get_value(attr):
-    """Safely extract a value regardless of whether it's a string or dict."""
+
+def _get_value(attr) -> str:
     if attr is None:
         return ""
     if isinstance(attr, str):
@@ -65,6 +64,7 @@ def _get_value(attr):
     if isinstance(attr, dict):
         return attr.get("simpleValue", "") or attr.get("value", "")
     return str(attr)
+
 
 def _describe_applicability(spec) -> str:
     parts = []
@@ -81,6 +81,7 @@ def _describe_applicability(spec) -> str:
         else:
             parts.append(class_name)
     return ", ".join(filter(None, parts)) or "Alle objekter"
+
 
 def _describe_requirements(spec) -> str:
     parts = []
@@ -103,39 +104,3 @@ def _describe_requirements(spec) -> str:
         else:
             parts.append(class_name)
     return "; ".join(filter(None, parts)) or "Se IDS-fil"
-def _describe_applicability(spec) -> str:
-    """Returns a human-readable applicability description."""
-    parts = []
-    for facet in spec.applicability:
-        class_name = facet.__class__.__name__
-        if class_name == "Entity":
-            name_obj = getattr(facet, "name", {})
-            if isinstance(name_obj, dict):
-                name = name_obj.get("simpleValue", "")
-            else:
-                name = str(name_obj)
-            parts.append(name)
-        elif class_name == "Classification":
-            value_obj = getattr(facet, 'value', {})
-            if isinstance(value_obj, dict):
-                value = value_obj.get('simpleValue', '')
-            else:
-                value = str(value_obj)
-            parts.append(f"Klassifikasjon: {value}")
-        elif class_name == "Property":
-            pset_obj = getattr(facet, "propertySet", {})
-            if isinstance(pset_obj, dict):
-                pset = pset_obj.get("simpleValue", "")
-            else:
-                pset = str(pset_obj)
-            prop_obj = getattr(facet, "baseName", {})
-            if isinstance(prop_obj, dict):
-                prop = prop_obj.get("simpleValue", "")
-            else:
-                prop = str(prop_obj)
-            parts.append(f"{pset}.{prop}")
-        else:
-            parts.append(class_name)
-    return ", ".join(filter(None, parts)) or "Alle objekter"
-
-
