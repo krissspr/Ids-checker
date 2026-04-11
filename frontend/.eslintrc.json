@@ -4,8 +4,7 @@
     "es2020": true
   },
   "extends": [
-    "eslint:recommended",
-    "@vitejs/eslint-config"
+    "eslint:recommended"
   ],
   "parserOptions": {
     "ecmaVersion": "latest",
@@ -13,6 +12,7 @@
   },
   "rules": {
     "no-unused-vars": "warn",
-    "no-console": "off"
+    "no-console": "off",
+    "no-redeclare": "error"
   }
 }

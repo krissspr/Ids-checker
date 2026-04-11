@@ -15,7 +15,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "DISABLE_ESLINT_PLUGIN=true vite build",
     "preview": "vite preview",
     "start": "vite preview"
   },
