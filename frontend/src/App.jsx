@@ -396,6 +396,19 @@ export default function IDSChecker() {
 
       setTc(tcConn);
 
+      // MIDLERTIDIG DEBUG - slett etter testing
+try {
+  const all = await tcConn.api.viewer.getModels();
+  console.log("ALL MODELS:", JSON.stringify(all));
+  const loaded = await tcConn.api.viewer.getModels("loaded");
+  console.log("LOADED MODELS:", JSON.stringify(loaded));
+} catch(e) {
+  console.log("getModels ERROR:", e.message);
+}
+
+// Get IFC models currently open in 3D viewer
+const models = await getLoadedIfcModels(tcConn.api);
+
       // Get IFC models currently open in 3D viewer
       const models = await getLoadedIfcModels(tcConn.api);
       setLoadedModels(models);
