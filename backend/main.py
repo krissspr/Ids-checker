@@ -9,9 +9,15 @@ app = FastAPI(title="IDS Checker API")
 # Allow requests from the React frontend (Vercel URL goes here in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with your Vercel URL in production
-    allow_methods=["POST", "GET"],
+    allow_origins=[
+        "https://ids-checker.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://railway.com"  # Railway's domain
+    ],
+    allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 
