@@ -109,9 +109,19 @@ def _describe_applicability(spec) -> str:
     for facet in spec.applicability:
         class_name = facet.__class__.__name__
         if class_name == "Entity":
-            parts.append(getattr(facet, "name", {}).get("simpleValue", ""))
+            name_obj = getattr(facet, "name", {})
+            if isinstance(name_obj, dict):
+                name = name_obj.get("simpleValue", "")
+            else:
+                name = str(name_obj)
+            parts.append(name)
         elif class_name == "Classification":
-            parts.append(f"Klassifikasjon: {getattr(facet, 'value', {}).get('simpleValue', '')}")
+            value_obj = getattr(facet, 'value', {})
+            if isinstance(value_obj, dict):
+                value = value_obj.get('simpleValue', '')
+            else:
+                value = str(value_obj)
+            parts.append(f"Klassifikasjon: {value}")
         elif class_name == "Property":
             pset_obj = getattr(facet, "propertySet", {})
             if isinstance(pset_obj, dict):
