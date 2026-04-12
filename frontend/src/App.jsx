@@ -514,9 +514,14 @@ export default function IDSChecker() {
       form.append("ifc_file", ifcFile);
       form.append("ids_file", idsFile);
 
+      console.log("API_BASE:", API_BASE);
+      console.log("Fetching URL:", `${API_BASE}/validate`);
       const res = await fetch(`${API_BASE}/validate`, { method: "POST", body: form });
+      console.log("Response status:", res.status);
+      console.log("Response headers:", res.headers);
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
+        console.log("Response text:", JSON.stringify(detail));
         throw new Error(detail?.detail || `Server svarte med ${res.status}`);
       }
       setResults(await res.json());
