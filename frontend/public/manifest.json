@@ -1,0 +1,8 @@
+{
+  "title": "IDS Regelsjekker",
+  "description": "Valider IFC-filer mot IDS-regelsett (buildingSMART IDS 1.0)",
+  "url": "https://ids-checker.vercel.app",
+  "icon": "https://ids-checker.vercel.app/icon.png",
+  "infoUrl": "https://ids-checker.vercel.app/help",
+  "enabled": true
+}
