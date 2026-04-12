@@ -679,7 +679,11 @@ export default function IDSChecker() {
       if (ifcTab === "viewer" && selectedModel && token && !devMode) {
         form.append("tc_file_id", selectedModel.fileId);
         form.append("tc_access_token", token);
-        form.append("tc_region", "app");
+        // Get project to determine region
+        const proj = await tc?.api?.project?.getCurrentProject();
+        const region = proj?.location === "europe" ? "app.eu" : "app";
+        form.append("tc_region", region);
+        log.info("TC region:", region);
         setLoadingStep("Backend laster IFC fra TC…");
         log.info("IFC via backend, fileId:", selectedModel.fileId);
       } else if (ifcTab === "upload" && uploadedIfc) {
