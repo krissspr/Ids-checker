@@ -262,7 +262,9 @@ function PropertyEditor({ spec, model, tc, devMode, onBack }) {
       const form = new FormData();
       form.append("tc_file_id", model?.fileId || "");
       form.append("tc_access_token", token || "");
-      form.append("tc_region", "app");
+      const region = project?.location === "europe" ? "app.eu" : "app";
+      form.append("tc_region", region);
+      log.info("TC region:", region);
       form.append("tc_project_id", project?.id || "");
       form.append("tc_folder_id", tcFolderId || "");
       form.append("upload_to_project", uploadMode === "tc" ? "true" : "false");
