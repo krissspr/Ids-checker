@@ -80,7 +80,13 @@ async function detectLoadedModels(api) {
         const file = await api.viewer.getLoadedModel(modelId);
         log.info(`getLoadedModel(${modelId}):`, JSON.stringify(file));
         if (file?.name?.toLowerCase().endsWith(".ifc")) {
-          ifcModels.push({ modelId, name: file.name, fileId: file.id, size: file.size });
+          log.info("file object full:", JSON.stringify(file));
+          ifcModels.push({ 
+            modelId, 
+            name: file.name, 
+            fileId: file.id || file.fileId || file.versionId || modelId,
+            size: file.size 
+          });
           log.ok(`IFC found: ${file.name}`);
         }
       } catch (e) { log.warn(`getLoadedModel failed:`, e.message); }
