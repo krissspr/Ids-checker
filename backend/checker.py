@@ -85,6 +85,7 @@ def _extract_requirements(spec) -> list:
             prop = _get_value(getattr(req, "baseName", ""))
             enum_values = _extract_enum(getattr(req, "value", None))
             pattern = _extract_pattern(getattr(req, "value", None))
+            instructions = getattr(req, "instructions", None) or ""
 
             result.append({
                 "type": "Property",
@@ -92,18 +93,21 @@ def _extract_requirements(spec) -> list:
                 "name": prop,
                 "enum_values": enum_values,
                 "pattern": pattern,
+                "instructions": str(instructions) if instructions else "",
                 "description": f"{pset}.{prop}",
             })
 
         elif class_name == "Attribute":
             attr_name = _get_value(getattr(req, "name", ""))
             enum_values = _extract_enum(getattr(req, "value", None))
+            instructions = getattr(req, "instructions", None) or ""
             result.append({
                 "type": "Attribute",
                 "pset": None,
                 "name": attr_name,
                 "enum_values": enum_values,
                 "pattern": None,
+                "instructions": str(instructions) if instructions else "",
                 "description": attr_name,
             })
 
