@@ -326,7 +326,7 @@ async def create_todos(
                     "target": {"id": todo_id, "type": "TODO"},
                 }
                 link_res = await client.post(
-                    f"{base_url}/objectlinks",
+                    f"{base_url}/objectlink",
                     json=link_body,
                     headers=headers,
                 )
