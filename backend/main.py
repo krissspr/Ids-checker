@@ -319,18 +319,19 @@ async def create_todos(
                         "id": model_id,
                         "versionId": model_id,
                         "data": [
-                            {"objectId": guid, "sourceId": guid, "type": "BIMOBJECT"}
+                            {"sourceId": guid, "type": "BIMOBJECT"}
                             for guid in guids[:50]
                         ],
                     },
                     "target": {"id": todo_id, "type": "TODO"},
                 }
+                print(f"  Objectlink request: {link_body}", flush=True)
                 link_res = await client.post(
                     f"{base_url}/objectlink",
                     json=link_body,
                     headers=headers,
                 )
-                print(f"  Objectlinks ({len(guids[:50])}): {link_res.status_code} {link_res.text[:200]}", flush=True)
+                print(f"  Objectlinks ({len(guids[:50])}): {link_res.status_code} {link_res.text[:500]}", flush=True)
 
             created.append(todo_data)
 
