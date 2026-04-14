@@ -578,7 +578,6 @@ function TodoButton({ spec, onCreateTodo }) {
   const buildDesc = () => {
     const reqs = spec.requirements_detail || [];
     if (reqs.length > 0) {
-      // Group by pset
       const byPset = {};
       reqs.forEach(r => {
         const pset = r.pset || "Egenskaper";
@@ -590,13 +589,13 @@ function TodoButton({ spec, onCreateTodo }) {
         lines.push(`${pset}:`);
         props.forEach(r => {
           const enumHint = r.enum_values?.length > 0 ? ` (${r.enum_values.join(", ")})` : "";
-          lines.push(`  ${r.name} - krav:${enumHint}`);
+          const instruction = r.instructions ? `\n    → ${r.instructions}` : "";
+          lines.push(`  ${r.name} - krav:${enumHint}${instruction}`);
         });
       });
       lines.push(``, `Feilet: ${spec.failed} av ${spec.total} objekter`);
       return lines.join("\n");
     }
-    // Fallback if no requirements_detail
     return [
       `Krav: ${spec.requirement}`,
       ``,
