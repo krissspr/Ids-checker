@@ -126,6 +126,7 @@ def _extract_requirements(spec) -> list:
             pattern = _extract_pattern(value_obj)
             bounds = _extract_bounds(value_obj)
             krav_tekst = _build_krav_tekst(value_obj, enum_values, pattern, bounds, instructions, data_type)
+            print(f"  {prop}: value_obj_type={type(value_obj).__name__} restriction_type={getattr(value_obj,'type',None)} options={getattr(value_obj,'options',None)} enum={enum_values} pattern={pattern} bounds={bounds} → krav={krav_tekst}", flush=True)
 
             result.append({
                 "type": "Property",
@@ -207,9 +208,37 @@ def _extract_bounds(value_obj) -> dict:
     """Extract min/max bounds from a restriction object."""
     if value_obj is None:
         return {}
+
+    # Restriction object with type='bounds'
     if hasattr(value_obj, 'type') and getattr(value_obj, 'type', None) == 'bounds':
         opts = getattr(value_obj, 'options', {}) or {}
-        return opts if isinstance(opts, dict) else {}
+        if isinstance(opts, dict):
+            return opts
+
+    # Restriction object where options is a dict directly
+    if hasattr(value_obj, 'options'):
+        opts = getattr(value_obj, 'options', {})
+        if isinstance(opts, dict) and any(k in opts for k in [
+            'minExclusive', 'minInclusive', 'maxExclusive', 'maxInclusive'
+        ]):
+            return opts
+
+    # String representation contains bounds keywords – parse it
+    raw = str(value_obj)
+    if any(k in raw for k in ['minExclusive', 'minInclusive', 'maxExclusive', 'maxInclusive']):
+        import re
+        result = {}
+        for key in ['minExclusive', 'minInclusive', 'maxExclusive', 'maxInclusive']:
+            m = re.search(rf"'{key}':\s*'?([0-9.]+)'?", raw) or \
+                re.search(rf'"{key}":\s*"?([0-9.]+)"?', raw)
+            if m:
+                try:
+                    result[key] = float(m.group(1))
+                except ValueError:
+                    result[key] = m.group(1)
+        if result:
+            return result
+
     return {}
 
 
@@ -241,7 +270,10 @@ def _build_krav_tekst(value_obj, enum_values, pattern, bounds, instructions, dat
 
     elif value_obj is not None:
         simple = _get_value(value_obj)
-        if simple and not simple.startswith('('):
+        # If value looks like a regex pattern or is empty, show "Skal fylles ut"
+        import re as _re
+        is_pattern = bool(simple and _re.search(r'[.+*?\\[\]{}()|^$]', simple))
+        if simple and not is_pattern and not simple.startswith('('):
             parts.append(f"Verdi: {simple}")
         else:
             parts.append("Skal fylles ut")
