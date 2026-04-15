@@ -756,7 +756,11 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo }) {
 
       {open && spec.failures?.length > 0 && (
         <div style={{padding:"10px 12px",background:M.white}}>
-          <div style={{fontSize:10,color:M.gray6,marginBottom:8,fontStyle:"italic"}}>Krav: {spec.requirement}</div>
+          <div style={{fontSize:10,color:M.gray6,marginBottom:8,fontStyle:"italic"}}>
+            {spec.requirements_detail?.filter(r => r.cardinality !== "optional").map((r, i) => (
+              <div key={i}>{r.pset ? `${r.pset}.${r.name}` : r.name}: {r.krav_tekst}</div>
+            )) || <div>{spec.requirement}</div>}
+          </div>
 
           {/* No objects warning */}
           {spec.no_objects && (
