@@ -21,17 +21,38 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
                 name = str(entity)
                 guid = None
                 ifc_type = "ukjent"
+
+            # Detect datatype failures from failed_reasons
+            datatype_issue = False
+            reason_text = ""
+            try:
+                idx = list(spec.failed_entities).index(entity)
+                reasons = spec.failed_reasons
+                if reasons and idx < len(reasons):
+                    reason_text = str(reasons[idx])
+                    if any(kw in reason_text.lower() for kw in [
+                        "datatype", "data type", "ifclabel", "ifctext",
+                        "ifcinteger", "ifcreal", "ifcboolean", "type mismatch"
+                    ]):
+                        datatype_issue = True
+            except Exception:
+                pass
+
             failing_instances.append({
                 "guid": guid,
                 "type": ifc_type,
                 "name": name,
+                "datatype_issue": datatype_issue,
+                "reason": reason_text[:200] if reason_text else "",
             })
 
         passed = len(spec.passed_entities)
         failed = len(spec.failed_entities)
         total = passed + failed
 
-        # Extract all requirements with enum options
+        # Detect "no objects found" – spec applies to nothing
+        no_objects = total == 0
+
         requirements_detail = _extract_requirements(spec)
 
         result_specs.append({
@@ -43,6 +64,7 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
             "passed": passed,
             "failed": failed,
             "total": total,
+            "no_objects": no_objects,
             "failures": failing_instances[:50],
             "more_failures": max(0, len(failing_instances) - 50),
         })
