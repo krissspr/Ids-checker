@@ -217,18 +217,9 @@ def _build_krav_tekst(value_obj, enum_values, pattern, bounds, instructions, dat
     """Build a human-readable requirement description from IDS constraint."""
     parts = []
 
-    # Enumeration
     if enum_values:
-        parts.append(f"Tillatte verdier: {', '.join(enum_values)}")
+        parts.append(f"Skal ha en av følgende verdier: {', '.join(enum_values)}")
 
-    # Pattern
-    elif pattern:
-        if pattern in ('.+', '.+?', '.*', '.'):
-            parts.append("Skal oppgis")
-        else:
-            parts.append(f"Mønster: {pattern}")
-
-    # Bounds
     elif bounds:
         b = []
         if 'minExclusive' in bounds:
@@ -241,26 +232,28 @@ def _build_krav_tekst(value_obj, enum_values, pattern, bounds, instructions, dat
             b.append(f"Maks {bounds['maxInclusive']}")
         if b:
             parts.append(", ".join(b))
+        else:
+            parts.append("Skal fylles ut")
 
-    # Simple value
+    elif pattern:
+        # Any pattern means "must be filled in" – don't expose regex to user
+        parts.append("Skal fylles ut")
+
     elif value_obj is not None:
         simple = _get_value(value_obj)
-        if simple:
+        if simple and not simple.startswith('('):
             parts.append(f"Verdi: {simple}")
         else:
-            parts.append("Skal oppgis")
-    else:
-        parts.append("Skal oppgis")
+            parts.append("Skal fylles ut")
 
-    # Instructions override/append
-    if instructions:
-        parts = [instructions]  # instructions takes full priority if set
+    else:
+        parts.append("Skal fylles ut")
 
     # Datatype suffix
     if data_type:
         parts.append(f"Datatype: {data_type}")
 
-    return " | ".join(parts) if parts else "Skal oppgis"
+    return " | ".join(parts) if parts else "Skal fylles ut"
 
 
 def _extract_enum(value_obj) -> list:
