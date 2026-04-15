@@ -584,16 +584,25 @@ function TodoButton({ spec, onCreateTodo }) {
         if (!byPset[pset]) byPset[pset] = [];
         byPset[pset].push(r);
       });
+
       const lines = [];
       Object.entries(byPset).forEach(([pset, props]) => {
-        lines.push(`${pset}:`);
+        lines.push(`Feil i egenskapsdata for egenskapssett: ${pset}`);
+        lines.push(``);
+        lines.push(`Nedenfor listes egenskapene med hver sine krav.`);
+        lines.push(``);
         props.forEach(r => {
-          const enumHint = r.enum_values?.length > 0 ? ` (${r.enum_values.join(", ")})` : "";
-          const instruction = r.instructions ? `\n    → ${r.instructions}` : "";
-          lines.push(`  ${r.name} - krav:${enumHint}${instruction}`);
+          const instruction = r.instructions
+            ? ` --> ${r.instructions}`
+            : r.enum_values?.length > 0
+              ? ` --> Tillatte verdier: ${r.enum_values.join(", ")}`
+              : ` --> (ingen instruksjon angitt)`;
+          lines.push(`${r.name}:${instruction}`);
         });
+        lines.push(``);
       });
-      lines.push(``, `Feilet: ${spec.failed} av ${spec.total} objekter`);
+
+      lines.push(`Feilet: ${spec.failed} av ${spec.total} objekter`);
       return lines.join("\n");
     }
     return [
@@ -739,11 +748,30 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo }) {
       {open && spec.failures?.length > 0 && (
         <div style={{padding:"10px 12px",background:M.white}}>
           <div style={{fontSize:10,color:M.gray6,marginBottom:8,fontStyle:"italic"}}>Krav: {spec.requirement}</div>
+
+          {/* No objects warning */}
+          {spec.no_objects && (
+            <div style={{ padding:"6px 10px", borderRadius:4, fontSize:11, background:M.yellowPale, border:`1px solid ${M.yellow}`, color:M.gray8, marginBottom:8 }}>
+              ⚠ Ingen objekter funnet som matcher denne regelen
+            </div>
+          )}
+
           {spec.failures.map((f, i) => (
-            <div key={i} style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 0", borderBottom:i<spec.failures.length-1?`1px solid ${M.grayLight}`:"none" }}>
+            <div
+              key={i}
+              onClick={() => onMark && f.guid && onMark([f.guid])}
+              style={{ display:"flex", gap:8, alignItems:"center", padding:"5px 6px", borderRadius:3, borderBottom:i<spec.failures.length-1?`1px solid ${M.grayLight}`:"none", cursor: onMark && f.guid ? "pointer" : "default", transition:"background 0.1s" }}
+              onMouseEnter={e => { if (onMark && f.guid) e.currentTarget.style.background = M.bluePale; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              title={onMark && f.guid ? "Klikk for å markere i viewer" : ""}
+            >
               <div style={{width:5,height:5,borderRadius:"50%",background:M.red,flexShrink:0}}/>
               <div style={{fontSize:11,color:M.gray,flex:1}}>{f.name}</div>
+              {f.datatype_issue && (
+                <span style={{ fontSize:9, background:M.yellowPale, color:M.yellowDark, border:`1px solid ${M.yellow}`, borderRadius:3, padding:"1px 5px", fontWeight:700 }}>DATATYPE</span>
+              )}
               <div style={{fontSize:10,fontFamily:"monospace",color:M.gray6}}>{f.type}</div>
+              {onMark && f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
             </div>
           ))}
           {spec.more_failures > 0 && <div style={{fontSize:10,color:M.gray6,marginTop:6}}>+ {spec.more_failures} flere</div>}
