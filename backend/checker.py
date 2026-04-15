@@ -22,19 +22,22 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
                 guid = None
                 ifc_type = "ukjent"
 
-            # Detect datatype failures from failed_reasons
+            # Detect datatype failures by checking all requirement facets
             datatype_issue = False
             reason_text = ""
             try:
-                idx = list(spec.failed_entities).index(entity)
-                reasons = spec.failed_reasons
-                if reasons and idx < len(reasons):
-                    reason_text = str(reasons[idx])
-                    if any(kw in reason_text.lower() for kw in [
-                        "datatype", "data type", "ifclabel", "ifctext",
-                        "ifcinteger", "ifcreal", "ifcboolean", "type mismatch"
-                    ]):
-                        datatype_issue = True
+                for req in spec.requirements:
+                    reasons = getattr(req, 'failed_reasons', []) or []
+                    for reason in reasons:
+                        r = str(reason)
+                        if any(kw in r.lower() for kw in [
+                            "datatype", "data type", "ifclabel", "ifctext",
+                            "ifcinteger", "ifcreal", "ifcboolean", "type mismatch",
+                            "incorrect data type", "wrong type"
+                        ]):
+                            datatype_issue = True
+                            reason_text = r[:200]
+                            break
             except Exception:
                 pass
 
@@ -43,7 +46,7 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
                 "type": ifc_type,
                 "name": name,
                 "datatype_issue": datatype_issue,
-                "reason": reason_text[:200] if reason_text else "",
+                "reason": reason_text,
             })
 
         passed = len(spec.passed_entities)
@@ -108,6 +111,11 @@ def _extract_requirements(spec) -> list:
             enum_values = _extract_enum(getattr(req, "value", None))
             pattern = _extract_pattern(getattr(req, "value", None))
             instructions = getattr(req, "instructions", None) or ""
+            cardinality = getattr(req, "cardinality", "required") or "required"
+
+            # Skip optional requirements
+            if cardinality == "optional":
+                continue
 
             result.append({
                 "type": "Property",
@@ -116,6 +124,7 @@ def _extract_requirements(spec) -> list:
                 "enum_values": enum_values,
                 "pattern": pattern,
                 "instructions": str(instructions) if instructions else "",
+                "cardinality": cardinality,
                 "description": f"{pset}.{prop}",
             })
 
@@ -123,6 +132,11 @@ def _extract_requirements(spec) -> list:
             attr_name = _get_value(getattr(req, "name", ""))
             enum_values = _extract_enum(getattr(req, "value", None))
             instructions = getattr(req, "instructions", None) or ""
+            cardinality = getattr(req, "cardinality", "required") or "required"
+
+            if cardinality == "optional":
+                continue
+
             result.append({
                 "type": "Attribute",
                 "pset": None,
@@ -130,6 +144,7 @@ def _extract_requirements(spec) -> list:
                 "enum_values": enum_values,
                 "pattern": None,
                 "instructions": str(instructions) if instructions else "",
+                "cardinality": cardinality,
                 "description": attr_name,
             })
 
