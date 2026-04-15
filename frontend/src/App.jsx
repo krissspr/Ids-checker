@@ -214,7 +214,7 @@ function RequirementRow({ req, value, onChange }) {
           <input
             value={value}
             onChange={e => onChange(e.target.value)}
-            placeholder={req.pattern ? `Mønster: ${req.pattern}` : "Fyll inn verdi"}
+            placeholder={req.krav_tekst || (req.pattern ? `Mønster: ${req.pattern}` : "Fyll inn verdi")}
             style={{ flex:1, padding:"8px 10px", fontSize:12, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"inherit", color:M.gray, background:M.white, outline:"none" }}
             onFocus={e => e.target.style.borderColor = M.blue}
             onBlur={e => e.target.style.borderColor = M.gray1}
@@ -577,9 +577,14 @@ function TodoButton({ spec, onCreateTodo }) {
 
   const buildDesc = () => {
     const reqs = spec.requirements_detail || [];
+    const appl = spec.applicability_detail || {};
+    const failedNames = new Set(spec.failed_req_names || []);
+
     if (reqs.length > 0) {
       const byPset = {};
       reqs.forEach(r => {
+        // Skip optional requirements that don't have failures
+        if (r.cardinality === "optional" && !failedNames.has(r.name)) return;
         const pset = r.pset || "Egenskaper";
         if (!byPset[pset]) byPset[pset] = [];
         byPset[pset].push(r);
@@ -587,17 +592,21 @@ function TodoButton({ spec, onCreateTodo }) {
 
       const lines = [];
       Object.entries(byPset).forEach(([pset, props]) => {
-        lines.push(`Feil i egenskapsdata for egenskapssett: ${pset}`);
+        if (props.length === 0) return;
+
+        // Header with objekttype if available
+        const objekttype = appl.objekttype ? ` for objekter med objekttype: ${appl.objekttype}` : "";
+        lines.push(`Feil i egenskapsdata${objekttype} i egenskapssett: ${pset}`);
         lines.push(``);
         lines.push(`Nedenfor listes egenskapene med hver sine krav.`);
         lines.push(``);
         props.forEach(r => {
-          const instruction = r.instructions
-            ? ` --> ${r.instructions}`
-            : r.enum_values?.length > 0
-              ? ` --> Tillatte verdier: ${r.enum_values.join(", ")}`
-              : ` --> (ingen instruksjon angitt)`;
-          lines.push(`${r.name}:${instruction}`);
+          const krav = r.krav_tekst || (
+            r.instructions ? r.instructions :
+            r.enum_values?.length > 0 ? `Tillatte verdier: ${r.enum_values.join(", ")}` :
+            "(ingen instruksjon angitt)"
+          );
+          lines.push(`${r.name}: --> ${krav}`);
         });
         lines.push(``);
       });
