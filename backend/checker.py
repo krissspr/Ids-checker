@@ -27,19 +27,28 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
             reason_text = ""
             try:
                 for req in spec.requirements:
-                    reasons = getattr(req, 'failed_reasons', []) or []
+                    # IfcTester stores reasons per-facet, not per-entity
+                    # Check both failed_reasons and any results attribute
+                    reasons = []
+                    for attr in ['failed_reasons', 'results', 'failures']:
+                        val = getattr(req, attr, None)
+                        if val:
+                            reasons = val if isinstance(val, list) else [val]
+                            break
+
                     for reason in reasons:
                         r = str(reason)
+                        print(f"  reason: {r[:150]}", flush=True)
                         if any(kw in r.lower() for kw in [
                             "datatype", "data type", "ifclabel", "ifctext",
                             "ifcinteger", "ifcreal", "ifcboolean", "type mismatch",
-                            "incorrect data type", "wrong type"
+                            "incorrect data type", "wrong type", "expected type",
                         ]):
                             datatype_issue = True
                             reason_text = r[:200]
                             break
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"  datatype check error: {e}", flush=True)
 
             failing_instances.append({
                 "guid": guid,
@@ -57,13 +66,24 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
         no_objects = total == 0
 
         requirements_detail = _extract_requirements(spec)
+        applicability_detail = _extract_applicability_detail(spec)
+
+        # Which requirement names actually have failures (for optional filtering)
+        failed_req_names = set()
+        for req in spec.requirements:
+            if getattr(req, 'failed_reasons', None):
+                prop = _get_value(getattr(req, "baseName", "")) or _get_value(getattr(req, "name", ""))
+                if prop:
+                    failed_req_names.add(prop)
 
         result_specs.append({
             "name": spec.name,
             "status": "passed" if spec.status else "failed",
             "applicability": _describe_applicability(spec),
+            "applicability_detail": applicability_detail,
             "requirement": _describe_requirements(spec),
             "requirements_detail": requirements_detail,
+            "failed_req_names": list(failed_req_names),
             "passed": passed,
             "failed": failed,
             "total": total,
@@ -86,20 +106,6 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
 
 
 def _extract_requirements(spec) -> list:
-    """
-    Extracts all requirements from a spec with full detail including
-    enum options when available.
-
-    Returns list of dicts:
-    {
-        "type": "Property" | "Attribute" | "Classification" | "Material",
-        "pset": "Pset_WallCommon",
-        "name": "FireRating",
-        "enum_values": ["REI30", "REI60", "REI90"],  # empty if no enum
-        "pattern": None,  # regex pattern if applicable
-        "description": "Pset_WallCommon.FireRating",
-    }
-    """
     result = []
 
     for req in spec.requirements:
@@ -108,14 +114,18 @@ def _extract_requirements(spec) -> list:
         if class_name == "Property":
             pset = _get_value(getattr(req, "propertySet", ""))
             prop = _get_value(getattr(req, "baseName", ""))
-            enum_values = _extract_enum(getattr(req, "value", None))
-            pattern = _extract_pattern(getattr(req, "value", None))
-            instructions = getattr(req, "instructions", None) or ""
+            value_obj = getattr(req, "value", None)
             cardinality = getattr(req, "cardinality", "required") or "required"
+            instructions = str(getattr(req, "instructions", "") or "")
+            data_type = str(getattr(req, "dataType", "") or "")
 
-            # Skip optional requirements
             if cardinality == "optional":
                 continue
+
+            enum_values = _extract_enum(value_obj)
+            pattern = _extract_pattern(value_obj)
+            bounds = _extract_bounds(value_obj)
+            krav_tekst = _build_krav_tekst(value_obj, enum_values, pattern, bounds, instructions, data_type)
 
             result.append({
                 "type": "Property",
@@ -123,28 +133,40 @@ def _extract_requirements(spec) -> list:
                 "name": prop,
                 "enum_values": enum_values,
                 "pattern": pattern,
-                "instructions": str(instructions) if instructions else "",
+                "bounds": bounds,
+                "data_type": data_type,
+                "instructions": instructions,
                 "cardinality": cardinality,
+                "krav_tekst": krav_tekst,
                 "description": f"{pset}.{prop}",
             })
 
         elif class_name == "Attribute":
             attr_name = _get_value(getattr(req, "name", ""))
-            enum_values = _extract_enum(getattr(req, "value", None))
-            instructions = getattr(req, "instructions", None) or ""
+            value_obj = getattr(req, "value", None)
             cardinality = getattr(req, "cardinality", "required") or "required"
+            instructions = str(getattr(req, "instructions", "") or "")
+            data_type = str(getattr(req, "dataType", "") or "")
 
             if cardinality == "optional":
                 continue
+
+            enum_values = _extract_enum(value_obj)
+            pattern = _extract_pattern(value_obj)
+            bounds = _extract_bounds(value_obj)
+            krav_tekst = _build_krav_tekst(value_obj, enum_values, pattern, bounds, instructions, data_type)
 
             result.append({
                 "type": "Attribute",
                 "pset": None,
                 "name": attr_name,
                 "enum_values": enum_values,
-                "pattern": None,
-                "instructions": str(instructions) if instructions else "",
+                "pattern": pattern,
+                "bounds": bounds,
+                "data_type": data_type,
+                "instructions": instructions,
                 "cardinality": cardinality,
+                "krav_tekst": krav_tekst,
                 "description": attr_name,
             })
 
@@ -155,6 +177,11 @@ def _extract_requirements(spec) -> list:
                 "name": "Classification",
                 "enum_values": [],
                 "pattern": None,
+                "bounds": {},
+                "data_type": "",
+                "instructions": "",
+                "cardinality": "required",
+                "krav_tekst": "Klassifisering påkrevd",
                 "description": "Klassifisering påkrevd",
             })
 
@@ -165,10 +192,75 @@ def _extract_requirements(spec) -> list:
                 "name": "Material",
                 "enum_values": [],
                 "pattern": None,
+                "bounds": {},
+                "data_type": "",
+                "instructions": "",
+                "cardinality": "required",
+                "krav_tekst": "Materiale påkrevd",
                 "description": "Materiale påkrevd",
             })
 
     return result
+
+
+def _extract_bounds(value_obj) -> dict:
+    """Extract min/max bounds from a restriction object."""
+    if value_obj is None:
+        return {}
+    if hasattr(value_obj, 'type') and getattr(value_obj, 'type', None) == 'bounds':
+        opts = getattr(value_obj, 'options', {}) or {}
+        return opts if isinstance(opts, dict) else {}
+    return {}
+
+
+def _build_krav_tekst(value_obj, enum_values, pattern, bounds, instructions, data_type) -> str:
+    """Build a human-readable requirement description from IDS constraint."""
+    parts = []
+
+    # Enumeration
+    if enum_values:
+        parts.append(f"Tillatte verdier: {', '.join(enum_values)}")
+
+    # Pattern
+    elif pattern:
+        if pattern in ('.+', '.+?', '.*', '.'):
+            parts.append("Skal oppgis")
+        else:
+            parts.append(f"Mønster: {pattern}")
+
+    # Bounds
+    elif bounds:
+        b = []
+        if 'minExclusive' in bounds:
+            b.append(f"Større enn {bounds['minExclusive']}")
+        if 'minInclusive' in bounds:
+            b.append(f"Minst {bounds['minInclusive']}")
+        if 'maxExclusive' in bounds:
+            b.append(f"Mindre enn {bounds['maxExclusive']}")
+        if 'maxInclusive' in bounds:
+            b.append(f"Maks {bounds['maxInclusive']}")
+        if b:
+            parts.append(", ".join(b))
+
+    # Simple value
+    elif value_obj is not None:
+        simple = _get_value(value_obj)
+        if simple:
+            parts.append(f"Verdi: {simple}")
+        else:
+            parts.append("Skal oppgis")
+    else:
+        parts.append("Skal oppgis")
+
+    # Instructions override/append
+    if instructions:
+        parts = [instructions]  # instructions takes full priority if set
+
+    # Datatype suffix
+    if data_type:
+        parts.append(f"Datatype: {data_type}")
+
+    return " | ".join(parts) if parts else "Skal oppgis"
 
 
 def _extract_enum(value_obj) -> list:
@@ -225,6 +317,23 @@ def _get_value(attr) -> str:
     if hasattr(attr, 'simpleValue'):
         return str(attr.simpleValue)
     return str(attr)
+
+
+def _extract_applicability_detail(spec) -> dict:
+    """Extract pset name and Objekttype value from applicability facets."""
+    result = {"pset": None, "objekttype": None, "entity": None}
+    for facet in spec.applicability:
+        class_name = facet.__class__.__name__
+        if class_name == "Entity":
+            result["entity"] = _get_value(getattr(facet, "name", ""))
+        elif class_name == "Property":
+            pset = _get_value(getattr(facet, "propertySet", ""))
+            prop = _get_value(getattr(facet, "baseName", ""))
+            value = _get_value(getattr(facet, "value", ""))
+            result["pset"] = pset
+            if prop.lower() in ("objekttype", "type", "objecttype"):
+                result["objekttype"] = value
+    return result
 
 
 def _describe_applicability(spec) -> str:
