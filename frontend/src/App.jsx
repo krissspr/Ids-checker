@@ -601,11 +601,7 @@ function TodoButton({ spec, onCreateTodo }) {
         lines.push(`Nedenfor listes egenskapene med hver sine krav.`);
         lines.push(``);
         props.forEach(r => {
-          const krav = r.krav_tekst || (
-            r.instructions ? r.instructions :
-            r.enum_values?.length > 0 ? `Tillatte verdier: ${r.enum_values.join(", ")}` :
-            "(ingen instruksjon angitt)"
-          );
+          const krav = r.krav_tekst || "Skal fylles ut";
           lines.push(`${r.name}: --> ${krav}`);
         });
         lines.push(``);
