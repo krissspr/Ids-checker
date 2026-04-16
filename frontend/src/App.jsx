@@ -1129,33 +1129,37 @@ function DownloadPage({ tc, onBack }) {
       const project = await tc.api.project.getCurrentProject();
       const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
 
-      // Get project details to find root folder ID
-      const projRes = await fetch(
-        `https://${host}/tc/api/2.0/projects/${project.id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (projRes.ok) {
-        const projData = await projRes.json();
-        log.info("Project data keys:", Object.keys(projData));
-        const rootId = projData.rootId || projData.rootFolderId || projData.rootFolder?.id;
-        log.info("Root folder ID:", rootId);
-        if (rootId) {
-          await loadFolder(rootId, null, token, host);
+      // Use Workspace API to get file tree (top-level folders)
+      const fileTree = await tc.api.viewer.getAvailableModels().catch(() => null);
+      log.info("fileTree:", fileTree);
+
+      if (fileTree && fileTree.length > 0) {
+        // Group by parentId to show folders
+        const folderMap = {};
+        fileTree.forEach(f => {
+          const parent = f.parentId || "root";
+          if (!folderMap[parent]) folderMap[parent] = [];
+          folderMap[parent].push({ id: f.fileId || f.id, name: f.name, type: f.type || "FILE", parentId: f.parentId });
+        });
+        const rootItems = folderMap["root"] || Object.values(folderMap)[0] || [];
+        setItems(rootItems);
+        setPath([]);
+        return;
+      }
+
+      // Fallback: try to get parent folder of loaded models
+      const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
+      log.info("loadedModels for download:", loadedModels);
+      if (loadedModels?.length > 0) {
+        const parentId = loadedModels[0].parentId;
+        if (parentId) {
+          await loadFolder(parentId, "Prosjektmappe", token, host);
           return;
         }
       }
-      // Fallback: try listing folders directly
-      const url = `https://${host}/tc/api/2.0/projects/${project.id}/topfolders`;
-      log.info("Trying:", url);
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      log.info("topfolders:", res.status);
-      if (res.ok) {
-        const data = await res.json();
-        log.info("topfolders data:", JSON.stringify(data).slice(0, 300));
-        const list = data.list || data.items || data.folders || (Array.isArray(data) ? data : []);
-        setItems(list);
-        setPath([]);
-      }
+
+      log.warn("Could not find root folder");
+      setItems([]);
     } catch (e) {
       log.error("loadRoot failed:", e.message);
     } finally {
