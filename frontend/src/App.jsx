@@ -567,10 +567,13 @@ function PropertyEditor({ spec, model, tc, devMode, onBack }) {
 }
 
 // ── ToDo editor (inline in SpecRow) ──────────────────────────────────────────
-function TodoButton({ spec, onCreateTodo }) {
+function TodoButton({ spec, onCreateTodo, tc }) {
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState("idle"); // idle | creating | done | error
+  const [state, setState] = useState("idle");
   const [message, setMessage] = useState("");
+  const [members, setMembers] = useState([]);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [loadingMembers, setLoadingMembers] = useState(false);
 
   // Pre-fill with spec data, user can edit
   const defaultTitle = `IDS: ${spec.name}`;
@@ -622,10 +625,34 @@ function TodoButton({ spec, onCreateTodo }) {
   const [title, setTitle] = useState(defaultTitle);
   const [desc, setDesc] = useState(defaultDesc);
 
+  const handleOpen = async () => {
+    setOpen(!open);
+    setState("idle");
+    setMessage("");
+    if (!open && tc && members.length === 0) {
+      setLoadingMembers(true);
+      try {
+        const token = tc.getAccessToken();
+        const project = await tc.api.project.getCurrentProject();
+        const region = project?.location === "europe" ? "app.eu" : "app";
+        const res = await fetch(`${API_BASE}/project-members?tc_project_id=${project.id}&tc_access_token=${token}&tc_region=${region}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMembers(data.members || []);
+          log.ok("Members loaded:", data.members?.length);
+        }
+      } catch (e) {
+        log.warn("Could not load members:", e.message);
+      } finally {
+        setLoadingMembers(false);
+      }
+    }
+  };
+
   const handle = async () => {
     setState("creating");
     try {
-      const result = await onCreateTodo(spec, title, desc);
+      const result = await onCreateTodo(spec, title, desc, assigneeId);
       if (result?.created > 0) {
         setState("done");
         setMessage(`✓ ToDo opprettet i TC`);
@@ -649,7 +676,7 @@ function TodoButton({ spec, onCreateTodo }) {
   return (
     <div>
       <button
-        onClick={() => { setOpen(!open); setState("idle"); setMessage(""); }}
+        onClick={handleOpen}
         style={{ padding:"7px 10px", borderRadius:4, border:`1px solid ${M.blue}40`, background:open?M.bluePale:M.white, color:M.blueDark, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6, width:"100%", transition:"all 0.15s" }}
       >
         📋 {open ? "Lukk ToDo-editor" : "Lag ToDo i TC"}
@@ -683,9 +710,30 @@ function TodoButton({ spec, onCreateTodo }) {
             />
           </div>
 
+          {/* Assignee */}
+          <div>
+            <label style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.06em", display:"block", marginBottom:4 }}>
+              Tildel til <span style={{ fontWeight:400 }}>(valgfritt)</span>
+            </label>
+            {loadingMembers ? (
+              <div style={{ fontSize:11, color:M.gray6, display:"flex", gap:6, alignItems:"center" }}><Icon.Spinner/> Laster medlemmer…</div>
+            ) : (
+              <select
+                value={assigneeId}
+                onChange={e => setAssigneeId(e.target.value)}
+                style={{ width:"100%", padding:"7px 9px", fontSize:12, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"inherit", color:M.gray, background:M.white, cursor:"pointer" }}
+              >
+                <option value="">— Ingen tildeling —</option>
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</option>
+                ))}
+              </select>
+            )}
+          </div>
+
           {/* Object link info */}
-          <div style={{ fontSize:10, color:M.gray6, lineHeight:1.5 }}>
-            🔗 {spec.failures.filter(f => f.guid).length} objekter kobles til ToDo-en via objectlinks
+          <div style={{ fontSize:10, color:M.gray6 }}>
+            🔗 {spec.failures.filter(f => f.guid).length} objekter kobles til ToDo-en
           </div>
 
           {/* Error */}
@@ -712,8 +760,166 @@ function TodoButton({ spec, onCreateTodo }) {
   );
 }
 
+// ── Topic button (inline in SpecRow) ─────────────────────────────────────────
+function TopicButton({ spec, onCreateTopic, tc }) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState("idle");
+  const [message, setMessage] = useState("");
+  const [members, setMembers] = useState([]);
+  const [assigneeId, setAssigneeId] = useState("");
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
+  const defaultTitle = `IDS: ${spec.name}`;
+
+  const buildDesc = () => {
+    const reqs = spec.requirements_detail || [];
+    const appl = spec.applicability_detail || {};
+    const failedNames = new Set(spec.failed_req_names || []);
+    if (reqs.length > 0) {
+      const byPset = {};
+      reqs.forEach(r => {
+        if (r.cardinality === "optional" && !failedNames.has(r.name)) return;
+        const pset = r.pset || "Egenskaper";
+        if (!byPset[pset]) byPset[pset] = [];
+        byPset[pset].push(r);
+      });
+      const lines = [];
+      Object.entries(byPset).forEach(([pset, props]) => {
+        if (props.length === 0) return;
+        const objekttype = appl.objekttype ? ` for objekter med objekttype: ${appl.objekttype}` : "";
+        lines.push(`Feil i egenskapsdata${objekttype} i egenskapssett: ${pset}`);
+        lines.push(``);
+        lines.push(`Nedenfor listes egenskapene med hver sine krav.`);
+        lines.push(``);
+        props.forEach(r => {
+          lines.push(`${r.name}: --> ${r.krav_tekst || "Skal fylles ut"}`);
+        });
+        lines.push(``);
+      });
+      lines.push(`Feilet: ${spec.failed} av ${spec.total} objekter`);
+      return lines.join("\n");
+    }
+    return [`Krav: ${spec.requirement}`, ``, `Feilet: ${spec.failed} av ${spec.total} objekter`].join("\n");
+  };
+
+  const [title, setTitle] = useState(defaultTitle);
+  const [desc, setDesc] = useState(() => buildDesc());
+
+  const handleOpen = async () => {
+    setOpen(!open);
+    setState("idle");
+    setMessage("");
+    if (!open && tc && members.length === 0) {
+      setLoadingMembers(true);
+      try {
+        const token = tc.getAccessToken();
+        const project = await tc.api.project.getCurrentProject();
+        const region = project?.location === "europe" ? "app.eu" : "app";
+        const res = await fetch(`${API_BASE}/project-members?tc_project_id=${project.id}&tc_access_token=${token}&tc_region=${region}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMembers(data.members || []);
+        }
+      } catch (e) {
+        log.warn("Could not load members:", e.message);
+      } finally {
+        setLoadingMembers(false);
+      }
+    }
+  };
+
+  const handle = async () => {
+    setState("creating");
+    try {
+      const result = await onCreateTopic(spec, title, desc, assigneeId);
+      if (result?.created > 0) {
+        setState("done");
+        setMessage(`✓ Topic opprettet i TC`);
+        setOpen(false);
+      } else {
+        setState("error");
+        setMessage(`✕ ${result?.errors?.[0]?.error || "Ukjent feil"}`);
+      }
+    } catch (e) {
+      setState("error");
+      setMessage(`✕ ${e.message}`);
+    }
+  };
+
+  if (state === "done") return (
+    <div style={{ padding:"6px 10px", borderRadius:4, fontSize:11, background:M.greenPale, color:M.greenDark, border:`1px solid ${M.green}` }}>
+      {message}
+    </div>
+  );
+
+  return (
+    <div>
+      <button
+        onClick={handleOpen}
+        style={{ padding:"7px 10px", borderRadius:4, border:`1px solid ${M.blue}40`, background:open?M.bluePale:M.white, color:M.blueDark, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6, width:"100%", transition:"all 0.15s" }}
+      >
+        🗂 {open ? "Lukk Topic-editor" : "Lag Topic i TC"}
+      </button>
+
+      {open && (
+        <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:8, padding:10, background:M.grayLight, borderRadius:4, border:`1px solid ${M.gray0}` }}>
+          <div>
+            <label style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.06em", display:"block", marginBottom:4 }}>Tittel</label>
+            <input value={title} onChange={e => setTitle(e.target.value)}
+              style={{ width:"100%", padding:"7px 9px", fontSize:12, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"inherit", color:M.gray, background:M.white, outline:"none" }}
+              onFocus={e => e.target.style.borderColor = M.blue}
+              onBlur={e => e.target.style.borderColor = M.gray1}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.06em", display:"block", marginBottom:4 }}>Beskrivelse</label>
+            <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={8}
+              style={{ width:"100%", padding:"7px 9px", fontSize:11, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"monospace", color:M.gray, background:M.white, outline:"none", resize:"vertical", lineHeight:1.5 }}
+              onFocus={e => e.target.style.borderColor = M.blue}
+              onBlur={e => e.target.style.borderColor = M.gray1}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.06em", display:"block", marginBottom:4 }}>
+              Tildel til <span style={{ fontWeight:400 }}>(valgfritt)</span>
+            </label>
+            {loadingMembers ? (
+              <div style={{ fontSize:11, color:M.gray6, display:"flex", gap:6, alignItems:"center" }}><Icon.Spinner/> Laster medlemmer…</div>
+            ) : (
+              <select value={assigneeId} onChange={e => setAssigneeId(e.target.value)}
+                style={{ width:"100%", padding:"7px 9px", fontSize:12, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"inherit", color:M.gray, background:M.white, cursor:"pointer" }}>
+                <option value="">— Ingen tildeling —</option>
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div style={{ fontSize:10, color:M.gray6 }}>
+            🔗 {spec.failures.filter(f => f.guid).length} objekter kobles til Topic-en
+          </div>
+
+          {state === "error" && (
+            <div style={{ padding:"6px 9px", borderRadius:4, fontSize:11, background:M.redPale, color:M.redDark, border:`1px solid ${M.red}` }}>
+              {message}
+            </div>
+          )}
+
+          <button onClick={handle} disabled={state === "creating" || !title.trim()}
+            style={{ padding:"8px 0", borderRadius:4, border:"none", cursor:state==="creating"||!title.trim()?"not-allowed":"pointer", background:title.trim()&&state!=="creating"?M.blue:M.gray1, color:title.trim()&&state!=="creating"?M.white:M.gray6, fontFamily:"inherit", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"background 0.2s" }}>
+            {state === "creating" ? <><Icon.Spinner color={M.white}/> Oppretter Topic…</> : <>🗂 Opprett Topic i TC</>}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Spec row ──────────────────────────────────────────────────────────────────
-function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo }) {
+function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCreateTopic, tc }) {
   const [open, setOpen] = useState(false);
   const [marking, setMarking] = useState(false);
   const [markResult, setMarkResult] = useState(null);
@@ -797,7 +1003,10 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo }) {
               </button>
             )}
             {onCreateTodo && (
-              <TodoButton spec={spec} onCreateTodo={onCreateTodo}/>
+              <TodoButton spec={spec} onCreateTodo={onCreateTodo} tc={tc}/>
+            )}
+            {onCreateTopic && (
+              <TopicButton spec={spec} onCreateTopic={onCreateTopic} tc={tc}/>
             )}
           </div>
 
@@ -863,7 +1072,7 @@ export default function IDSChecker() {
     return await markObjectsInViewer(tc.api, selectedModel.modelId, guids);
   };
 
-  const createTodo = async (spec, title, description) => {
+  const createTodo = async (spec, title, description, assigneeId = "") => {
     log.group("createTodo: " + spec.name);
     try {
       const token = tc.getAccessToken();
@@ -884,6 +1093,7 @@ export default function IDSChecker() {
       form.append("tc_region", region);
       form.append("tc_project_id", project.id);
       if (selectedModel?.tcHost) form.append("tc_host", selectedModel.tcHost);
+      if (assigneeId) form.append("assignee_id", assigneeId);
       form.append("todos", JSON.stringify([{
         title,
         description,
@@ -917,7 +1127,44 @@ export default function IDSChecker() {
     }
   };
 
-  const handleRun = async () => {
+  const createTopic = async (spec, title, desc, assigneeId = "") => {
+    log.group("createTopic: " + spec.name);
+    try {
+      const token = tc.getAccessToken();
+      const project = await tc.api.project.getCurrentProject();
+      const region = project?.location === "europe" ? "app.eu" : "app";
+
+      const guids = spec.failures.map(f => f.guid).filter(Boolean);
+      if (guids.length > 0 && selectedModel) {
+        await markObjectsInViewer(tc.api, selectedModel.modelId, guids);
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      const form = new FormData();
+      form.append("tc_access_token", token);
+      form.append("tc_region", region);
+      form.append("tc_project_id", project.id);
+      if (selectedModel?.tcHost) form.append("tc_host", selectedModel.tcHost);
+      if (assigneeId) form.append("assignee_id", assigneeId);
+      form.append("topics", JSON.stringify([{
+        title,
+        description: desc,
+        guids,
+        modelId: selectedModel?.modelId || selectedModel?.fileId || "",
+      }]));
+
+      log.info("Creating topic:", title, "guids:", guids.length);
+      const res = await fetch(`${API_BASE}/create-topics`, { method: "POST", body: form });
+      const data = await res.json();
+      log.ok("Result:", data);
+      log.end();
+      return data;
+    } catch (e) {
+      log.error("createTopic failed:", e.message);
+      log.end();
+      throw e;
+    }
+  };
     setError(null);
     setResults(null);
     setIsRunning(true);
@@ -1112,7 +1359,7 @@ export default function IDSChecker() {
             </div>
 
             {specs.map((spec, i) => (
-              <SpecRow key={spec.name} spec={spec} index={i} onMark={canMark?handleMark:null} canMark={canMark} onEditProps={setEditingSpec} onCreateTodo={tc || devMode ? (spec, title, desc) => devMode ? Promise.resolve({created:1,errors:[]}) : createTodo(spec, title, desc) : null}/>
+              <SpecRow key={spec.name} spec={spec} index={i} onMark={canMark?handleMark:null} canMark={canMark} onEditProps={setEditingSpec} onCreateTodo={tc || devMode ? (spec, title, desc, assigneeId) => devMode ? Promise.resolve({created:1,errors:[]}) : createTodo(spec, title, desc, assigneeId) : null} onCreateTopic={tc ? (spec, title, desc, assigneeId) => createTopic(spec, title, desc, assigneeId) : null} tc={tc}/>
             ))}
           </div>
         )}
