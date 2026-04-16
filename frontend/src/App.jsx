@@ -858,7 +858,7 @@ function TopicButton({ spec, onCreateTopic, tc }) {
         onClick={handleOpen}
         style={{ padding:"7px 10px", borderRadius:4, border:`1px solid ${M.blue}40`, background:open?M.bluePale:M.white, color:M.blueDark, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6, width:"100%", transition:"all 0.15s" }}
       >
-        🗂 {open ? "Lukk BCF-editor" : "Lag Topic / BCF"}
+        🗂 {open ? "Lukk Topic-editor" : "Lag Topic i TC"}
       </button>
 
       {open && (
@@ -910,7 +910,7 @@ function TopicButton({ spec, onCreateTopic, tc }) {
 
           <button onClick={handle} disabled={state === "creating" || !title.trim()}
             style={{ padding:"8px 0", borderRadius:4, border:"none", cursor:state==="creating"||!title.trim()?"not-allowed":"pointer", background:title.trim()&&state!=="creating"?M.blue:M.gray1, color:title.trim()&&state!=="creating"?M.white:M.gray6, fontFamily:"inherit", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"background 0.2s" }}>
-            {state === "creating" ? <><Icon.Spinner color={M.white}/> Oppretter Topic…</> : <>🗂 Opprett Topic / BCF i TC</>}
+            {state === "creating" ? <><Icon.Spinner color={M.white}/> Oppretter Topic…</> : <>🗂 Opprett Topic i TC</>}
           </button>
         </div>
       )}
@@ -1021,222 +1021,8 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
   );
 }
 
-// ── Home Page ─────────────────────────────────────────────────────────────────
-function HomePage({ onSelect, tc, devMode }) {
-  const cards = [
-    {
-      id: "ids",
-      icon: "✓",
-      title: "IDS Validering",
-      desc: "Valider IFC-modell mot IDS-regelsett. Finn feil, marker objekter i viewer, opprett ToDo og Topics.",
-      color: M.blue,
-      colorPale: M.bluePale,
-    },
-    {
-      id: "props",
-      icon: "✏",
-      title: "Property Editor",
-      desc: "Rediger egenskaper direkte på IFC-objekter og last ned korrigert modell.",
-      color: "#e08c00",
-      colorPale: M.yellowPale,
-    },
-    {
-      id: "download",
-      icon: "↓",
-      title: "Last ned",
-      desc: "Bla gjennom mapper i TC-prosjektet og last ned filer til din PC.",
-      color: M.green,
-      colorPale: M.greenPale,
-    },
-  ];
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:0, height:"100%", background:M.grayLight }}>
-      {/* Header */}
-      <div style={{ background:M.blueDark, padding:"18px 16px 14px", color:M.white }}>
-        <div style={{ fontSize:16, fontWeight:700, letterSpacing:"-0.3px" }}>IDS Regelsjekker</div>
-        <div style={{ fontSize:11, color:"#a8c8e8", marginTop:2 }}>
-          {tc ? "Koblet til Trimble Connect" : devMode ? "Utviklermodus" : "Kobler til…"}
-        </div>
-      </div>
-
-      {/* Cards */}
-      <div style={{ padding:12, display:"flex", flexDirection:"column", gap:10, flex:1 }}>
-        {cards.map(card => (
-          <button
-            key={card.id}
-            onClick={() => onSelect(card.id)}
-            style={{ background:M.white, border:`1px solid ${M.gray0}`, borderRadius:6, padding:"14px 14px", textAlign:"left", cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s", display:"flex", gap:14, alignItems:"flex-start" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = card.color; e.currentTarget.style.background = card.colorPale; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = M.gray0; e.currentTarget.style.background = M.white; }}
-          >
-            <div style={{ width:36, height:36, borderRadius:8, background:card.colorPale, border:`1px solid ${card.color}40`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, color:card.color }}>
-              {card.icon}
-            </div>
-            <div>
-              <div style={{ fontSize:13, fontWeight:700, color:M.gray, marginBottom:3 }}>{card.title}</div>
-              <div style={{ fontSize:11, color:M.gray6, lineHeight:1.5 }}>{card.desc}</div>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      {/* Footer */}
-      <div style={{ padding:"10px 16px", fontSize:10, color:M.gray6, borderTop:`1px solid ${M.gray0}`, background:M.white }}>
-        Vegvesen · IDS Regelsjekker v1.0
-      </div>
-    </div>
-  );
-}
-
-// ── Download Page ─────────────────────────────────────────────────────────────
-function DownloadPage({ tc, onBack }) {
-  const [folders, setFolders] = useState([]);
-  const [currentFolder, setCurrentFolder] = useState(null);
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [path, setPath] = useState([]);
-  const [downloading, setDownloading] = useState(null);
-
-  const loadFolder = async (folderId, folderName) => {
-    setLoading(true);
-    try {
-      const token = tc.getAccessToken();
-      const project = await tc.api.project.getCurrentProject();
-      const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
-      const url = `https://${host}/tc/api/2.0/folders/${folderId}/items?tokenThumburl=false&sort=+name`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        const list = data.list || data.items || [];
-        setItems(list);
-        setCurrentFolder(folderId);
-        if (folderName) setPath(p => [...p, { id: folderId, name: folderName }]);
-      }
-    } catch (e) {
-      log.error("loadFolder failed:", e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadRoot = async () => {
-    setLoading(true);
-    try {
-      const token = tc.getAccessToken();
-      const project = await tc.api.project.getCurrentProject();
-      const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
-      const url = `https://${host}/tc/api/2.0/projects/${project.id}/folders`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        const list = data.list || data.items || [];
-        setItems(list);
-        setPath([]);
-        setCurrentFolder(null);
-      }
-    } catch (e) {
-      log.error("loadRoot failed:", e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const downloadFile = async (item) => {
-    setDownloading(item.id);
-    try {
-      const token = tc.getAccessToken();
-      const project = await tc.api.project.getCurrentProject();
-      const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
-      const urlRes = await fetch(
-        `https://${host}/tc/api/2.0/files/fs/${item.id}/downloadurl`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (urlRes.ok) {
-        const urlData = await urlRes.json();
-        const dlUrl = urlData.url;
-        if (dlUrl) {
-          const a = document.createElement("a");
-          a.href = dlUrl;
-          a.download = item.name;
-          a.click();
-          log.ok("Download started:", item.name);
-        }
-      } else {
-        log.warn("downloadurl failed:", urlRes.status);
-      }
-    } catch (e) {
-      log.error("downloadFile failed:", e.message);
-    } finally {
-      setDownloading(null);
-    }
-  };
-
-  useEffect(() => { if (tc) loadRoot(); }, [tc]);
-
-  const navigateTo = (idx) => {
-    const target = path[idx];
-    const newPath = path.slice(0, idx + 1);
-    setPath(newPath.slice(0, -1));
-    loadFolder(target.id, target.name);
-  };
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%", background:M.white }}>
-      <div style={{ background:M.blueDark, padding:"12px 14px", display:"flex", alignItems:"center", gap:10 }}>
-        <button onClick={onBack} style={{ background:"none", border:"none", color:M.white, cursor:"pointer", fontSize:16, padding:0, opacity:0.8 }}>←</button>
-        <div style={{ color:M.white, fontWeight:700, fontSize:13 }}>Last ned fra TC</div>
-      </div>
-
-      {/* Breadcrumb */}
-      <div style={{ padding:"8px 12px", display:"flex", alignItems:"center", gap:4, fontSize:11, color:M.gray6, borderBottom:`1px solid ${M.gray0}`, flexWrap:"wrap" }}>
-        <span onClick={loadRoot} style={{ cursor:"pointer", color:M.blue }}>Rot</span>
-        {path.map((p, i) => (
-          <span key={p.id} style={{ display:"flex", alignItems:"center", gap:4 }}>
-            <span style={{ color:M.gray6 }}>/</span>
-            <span onClick={() => navigateTo(i)} style={{ cursor:"pointer", color:i === path.length-1 ? M.gray : M.blue }}>{p.name}</span>
-          </span>
-        ))}
-      </div>
-
-      {/* Items */}
-      <div style={{ flex:1, overflowY:"auto", padding:"6px 8px" }}>
-        {loading ? (
-          <div style={{ display:"flex", gap:8, alignItems:"center", padding:16, color:M.gray6, fontSize:12 }}><Icon.Spinner/> Laster…</div>
-        ) : items.length === 0 ? (
-          <div style={{ padding:16, fontSize:12, color:M.gray6 }}>Ingen filer her</div>
-        ) : items.map(item => {
-          const isFolder = item.type === "FOLDER";
-          const isFile = !isFolder;
-          return (
-            <div key={item.id}
-              style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 8px", borderRadius:4, cursor:isFolder?"pointer":"default", transition:"background 0.1s" }}
-              onClick={() => isFolder && loadFolder(item.id, item.name)}
-              onMouseEnter={e => { if (isFolder) e.currentTarget.style.background = M.bluePale; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-            >
-              <span style={{ fontSize:16, flexShrink:0 }}>{isFolder ? "📁" : "📄"}</span>
-              <div style={{ flex:1, fontSize:12, color:M.gray, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.name}</div>
-              {isFile && (
-                <button
-                  onClick={e => { e.stopPropagation(); downloadFile(item); }}
-                  disabled={downloading === item.id}
-                  style={{ padding:"4px 10px", borderRadius:3, border:`1px solid ${M.blue}`, background:M.white, color:M.blue, fontSize:10, fontWeight:600, cursor:"pointer", fontFamily:"inherit", flexShrink:0, display:"flex", alignItems:"center", gap:4 }}
-                >
-                  {downloading === item.id ? <><Icon.Spinner color={M.blue}/> …</> : "↓ Last ned"}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function IDSChecker() {
-  const [page, setPage] = useState("home"); // home | ids | props | download
   const [tc, setTc] = useState(null);
   const [devMode, setDevMode] = useState(false);
   const [loadedModels, setLoadedModels] = useState([]);
@@ -1442,7 +1228,6 @@ export default function IDSChecker() {
 
   const header = (
     <div style={{ background:M.blueDark, padding:"0 16px", display:"flex", alignItems:"center", gap:10, height:48, flexShrink:0 }}>
-      <button onClick={() => setPage("home")} style={{ background:"none", border:"none", color:M.white, cursor:"pointer", fontSize:16, padding:"0 4px 0 0", opacity:0.7, lineHeight:1 }}>←</button>
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
         <path d="M3 5h14M3 10h9M3 15h11" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
         <circle cx="16" cy="14" r="3.5" stroke={M.yellow} strokeWidth="1.5"/>
@@ -1458,30 +1243,10 @@ export default function IDSChecker() {
     </div>
   );
 
-  const globalStyle = <style>{`@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:${M.grayLight}}::-webkit-scrollbar-thumb{background:${M.gray1};border-radius:3px}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}`}</style>;
-
-  if (page === "home") {
-    return (
-      <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
-        {globalStyle}
-        <HomePage onSelect={setPage} tc={tc} devMode={devMode}/>
-      </div>
-    );
-  }
-
-  if (page === "download") {
-    return (
-      <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
-        {globalStyle}
-        <DownloadPage tc={tc} onBack={() => setPage("home")}/>
-      </div>
-    );
-  }
-
   if (editingSpec) {
     return (
       <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", background:M.grayLight, minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
-        {globalStyle}
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:${M.grayLight}}::-webkit-scrollbar-thumb{background:${M.gray1};border-radius:3px}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}`}</style>
         {header}
         <PropertyEditor spec={editingSpec} model={selectedModel} tc={tc} devMode={devMode} onBack={() => setEditingSpec(null)}/>
       </div>
@@ -1490,7 +1255,7 @@ export default function IDSChecker() {
 
   return (
     <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", background:M.grayLight, minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
-      {globalStyle}
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap');*{box-sizing:border-box;margin:0;padding:0}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:${M.grayLight}}::-webkit-scrollbar-thumb{background:${M.gray1};border-radius:3px}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}`}</style>
       {header}
 
       <div style={{ flex:1, overflow:"auto", padding:14, display:"flex", flexDirection:"column", gap:14 }}>
