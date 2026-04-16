@@ -892,7 +892,7 @@ function TopicButton({ spec, onCreateTopic, tc }) {
                 style={{ width:"100%", padding:"7px 9px", fontSize:12, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"inherit", color:M.gray, background:M.white, cursor:"pointer" }}>
                 <option value="">— Ingen tildeling —</option>
                 {members.map(m => (
-                  <option key={m.id} value={m.id}>{m.firstName} {m.lastName} ({m.email})</option>
+                  <option key={m.id} value={m.tiduuid || m.id}>{m.firstName} {m.lastName} ({m.email})</option>
                 ))}
               </select>
             )}
@@ -1098,16 +1098,18 @@ function DownloadPage({ tc, onBack }) {
   const [path, setPath] = useState([]);
   const [downloading, setDownloading] = useState(null);
 
-  const loadFolder = async (folderId, folderName) => {
+  const loadFolder = async (folderId, folderName, existingToken, existingHost) => {
     setLoading(true);
     try {
-      const token = tc.getAccessToken();
-      const project = await tc.api.project.getCurrentProject();
-      const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+      const token = existingToken || tc.getAccessToken();
+      const project = existingToken ? null : await tc.api.project.getCurrentProject();
+      const host = existingHost || (project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com");
       const url = `https://${host}/tc/api/2.0/folders/${folderId}/items?tokenThumburl=false&sort=+name`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      log.info("loadFolder:", folderId, "→", res.status);
       if (res.ok) {
         const data = await res.json();
+        log.info("folder keys:", Object.keys(data));
         const list = data.list || data.items || [];
         setItems(list);
         setCurrentFolder(folderId);
@@ -1126,14 +1128,33 @@ function DownloadPage({ tc, onBack }) {
       const token = tc.getAccessToken();
       const project = await tc.api.project.getCurrentProject();
       const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
-      const url = `https://${host}/tc/api/2.0/projects/${project.id}/folders`;
+
+      // Get project details to find root folder ID
+      const projRes = await fetch(
+        `https://${host}/tc/api/2.0/projects/${project.id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (projRes.ok) {
+        const projData = await projRes.json();
+        log.info("Project data keys:", Object.keys(projData));
+        const rootId = projData.rootFolderId || projData.rootFolder?.id || projData.id;
+        log.info("Root folder ID:", rootId);
+        if (rootId) {
+          await loadFolder(rootId, null, token, host);
+          return;
+        }
+      }
+      // Fallback: try listing folders directly
+      const url = `https://${host}/tc/api/2.0/projects/${project.id}/topfolders`;
+      log.info("Trying:", url);
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      log.info("topfolders:", res.status);
       if (res.ok) {
         const data = await res.json();
-        const list = data.list || data.items || [];
+        log.info("topfolders data:", JSON.stringify(data).slice(0, 300));
+        const list = data.list || data.items || data.folders || (Array.isArray(data) ? data : []);
         setItems(list);
         setPath([]);
-        setCurrentFolder(null);
       }
     } catch (e) {
       log.error("loadRoot failed:", e.message);
@@ -1211,7 +1232,7 @@ function DownloadPage({ tc, onBack }) {
           return (
             <div key={item.id}
               style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 8px", borderRadius:4, cursor:isFolder?"pointer":"default", transition:"background 0.1s" }}
-              onClick={() => isFolder && loadFolder(item.id, item.name)}
+              onClick={() => isFolder && loadFolder(item.id, item.name, null, null)}
               onMouseEnter={e => { if (isFolder) e.currentTarget.style.background = M.bluePale; }}
               onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
             >
