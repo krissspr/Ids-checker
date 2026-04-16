@@ -1137,7 +1137,7 @@ function DownloadPage({ tc, onBack }) {
       if (projRes.ok) {
         const projData = await projRes.json();
         log.info("Project data keys:", Object.keys(projData));
-        const rootId = projData.rootFolderId || projData.rootFolder?.id || projData.id;
+        const rootId = projData.rootId || projData.rootFolderId || projData.rootFolder?.id;
         log.info("Root folder ID:", rootId);
         if (rootId) {
           await loadFolder(rootId, null, token, host);
