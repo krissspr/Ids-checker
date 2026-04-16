@@ -301,7 +301,7 @@ async def create_todos(
                                 "state": 1,
                                 "isRecursive": False,
                             }
-                            for guid in guids[:50]
+                            for guid in guids[:250]
                         ],
                     },
                 }
@@ -320,7 +320,7 @@ async def create_todos(
                         "versionId": model_id,
                         "data": [
                             {"sourceId": guid, "type": "BIMOBJECT"}
-                            for guid in guids[:50]
+                            for guid in guids[:250]
                         ],
                     },
                     "target": {"id": todo_id, "type": "TODO"},
@@ -331,7 +331,7 @@ async def create_todos(
                     json=link_body,
                     headers=headers,
                 )
-                print(f"  Objectlinks ({len(guids[:50])}): {link_res.status_code} {link_res.text[:500]}", flush=True)
+                print(f"  Objectlinks ({len(guids[:250])}): {link_res.status_code} {link_res.text[:500]}", flush=True)
 
             created.append(todo_data)
 
@@ -339,6 +339,108 @@ async def create_todos(
         "created": len(created),
         "failed": len(failed),
         "todos": [{"id": t.get("id"), "label": t.get("label")} for t in created],
+        "errors": failed,
+    }
+
+
+@app.post("/create-topics")
+async def create_topics(
+    tc_access_token: str = Form(...),
+    tc_region: str = Form("app"),
+    tc_host: str = Form(None),
+    tc_project_id: str = Form(...),
+    topics: str = Form(...),  # JSON array
+    assignee_id: str = Form(None),
+):
+    """
+    Creates one BCF Topic (Issue) per failed spec in TC.
+    topics = [{"title": "...", "description": "...", "guids": [...], "modelId": "..."}]
+    """
+    host = tc_host or f"{tc_region}.connect.trimble.com"
+    base_url = f"https://{host}/tc/api/2.0"
+    context_id = f"trn:2:tc:eu:projects:{tc_project_id}"
+    issues_url = f"https://{host}/v1/context/{context_id}/issues"
+
+    headers = {
+        "Authorization": f"Bearer {tc_access_token}",
+        "Content-Type": "application/json",
+    }
+    print(f"Creating topics on: {issues_url}", flush=True)
+
+    topic_list = json.loads(topics)
+    created = []
+    failed = []
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        for topic in topic_list:
+            # Step 1: Create Issue (Topic)
+            body = {
+                "title": topic.get("title", "IDS Feil"),
+                "description": topic.get("description", ""),
+                "type": "Issue",
+                "status": "New",
+                "assignees": [assignee_id] if assignee_id else [],
+                "labels": [],
+                "dueDate": None,
+            }
+            print(f"Creating topic: {body['title']}", flush=True)
+            res = await client.post(issues_url, json=body, headers=headers)
+            print(f"  → {res.status_code} {res.text[:300]}", flush=True)
+
+            if res.status_code not in (200, 201):
+                failed.append({"title": topic.get("title"), "status": res.status_code, "error": res.text[:200]})
+                continue
+
+            issue_data = res.json()
+            issue_id = issue_data.get("id")
+            print(f"  Issue created: {issue_id}", flush=True)
+
+            guids = topic.get("guids", [])
+            model_id = topic.get("modelId")
+            print(f"  guids: {guids[:3]} ({len(guids)} total) | model_id: {model_id}", flush=True)
+
+            if issue_id and guids and model_id:
+                # Step 2: Create view linked to issue
+                view_body = {
+                    "name": f"IDS feil: {topic.get('title', '')}",
+                    "projectId": tc_project_id,
+                    "contextId": context_id,
+                    "models": [model_id],
+                    "files": [model_id],
+                    "issueId": issue_id,
+                    "presentation": {
+                        "ghost": True,
+                        "elements": [
+                            {"objectId": guid, "sourceId": guid, "versionId": model_id, "state": 1, "isRecursive": False}
+                            for guid in guids[:250]
+                        ],
+                    },
+                }
+                view_res = await client.post(f"{base_url}/views", json=view_body, headers=headers)
+                print(f"  View: {view_res.status_code} {view_res.text[:200]}", flush=True)
+
+                # Step 3: Objectlink with type ISSUE
+                link_body = {
+                    "source": {
+                        "id": model_id,
+                        "versionId": model_id,
+                        "data": [{"sourceId": guid, "type": "BIMOBJECT"} for guid in guids[:250]],
+                    },
+                    "target": {
+                        "id": issue_id,
+                        "type": "ISSUE",
+                        "contextId": context_id,
+                    },
+                }
+                link_res = await client.post(f"{base_url}/objectlink", json=link_body, headers=headers)
+                print(f"  Objectlinks ({len(guids[:250])}): {link_res.status_code} {link_res.text[:200]}", flush=True)
+
+            created.append(issue_data)
+
+    return {
+        "created": len(created),
+        "failed": len(failed),
+        "issues": [{"id": t.get("id"), "title": t.get("title")} for t in created],
         "errors": failed,
     }
 
