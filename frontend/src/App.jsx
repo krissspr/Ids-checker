@@ -1129,36 +1129,26 @@ function DownloadPage({ tc, onBack }) {
       const project = await tc.api.project.getCurrentProject();
       const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
 
-      // Use Workspace API to get file tree (top-level folders)
-      const fileTree = await tc.api.viewer.getAvailableModels().catch(() => null);
-      log.info("fileTree:", fileTree);
-
-      if (fileTree && fileTree.length > 0) {
-        // Group by parentId to show folders
-        const folderMap = {};
-        fileTree.forEach(f => {
-          const parent = f.parentId || "root";
-          if (!folderMap[parent]) folderMap[parent] = [];
-          folderMap[parent].push({ id: f.fileId || f.id, name: f.name, type: f.type || "FILE", parentId: f.parentId });
-        });
-        const rootItems = folderMap["root"] || Object.values(folderMap)[0] || [];
-        setItems(rootItems);
-        setPath([]);
-        return;
-      }
-
-      // Fallback: try to get parent folder of loaded models
+      // Get parentId from loaded models in viewer
       const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
-      log.info("loadedModels for download:", loadedModels);
+      log.info("loadedModels:", loadedModels);
+
       if (loadedModels?.length > 0) {
         const parentId = loadedModels[0].parentId;
+        log.info("Using parentId:", parentId);
         if (parentId) {
-          await loadFolder(parentId, "Prosjektmappe", token, host);
+          // Get folder info to show name
+          const folderRes = await fetch(
+            `https://${host}/tc/api/2.0/folders/${parentId}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          const folderName = folderRes.ok ? (await folderRes.json()).name : "Prosjektmappe";
+          await loadFolder(parentId, folderName, token, host);
           return;
         }
       }
 
-      log.warn("Could not find root folder");
+      log.warn("No loaded models found – cannot determine folder");
       setItems([]);
     } catch (e) {
       log.error("loadRoot failed:", e.message);
