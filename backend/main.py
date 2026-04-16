@@ -209,7 +209,13 @@ async def project_members(
             data = res.json()
             members = data.get("list") or data.get("members") or (data if isinstance(data, list) else [])
             return {"members": [
-                {"id": m.get("id"), "email": m.get("email"), "firstName": m.get("firstName",""), "lastName": m.get("lastName","")}
+                {
+                    "id": m.get("id"),
+                    "tiduuid": m.get("tiduuid", ""),
+                    "email": m.get("email"),
+                    "firstName": m.get("firstName",""),
+                    "lastName": m.get("lastName",""),
+                }
                 for m in members
             ]}
         return {"members": []}
@@ -379,7 +385,7 @@ async def create_topics(
                 "description": topic.get("description", ""),
                 "type": "Issue",
                 "status": "New",
-                "assignees": [assignee_id] if assignee_id else [],
+                "assignees": [f"users:{assignee_id}"] if assignee_id else [],
                 "labels": [],
                 "dueDate": None,
             }
