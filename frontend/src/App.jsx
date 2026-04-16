@@ -1134,17 +1134,25 @@ function DownloadPage({ tc, onBack }) {
       log.info("loadedModels:", loadedModels);
 
       if (loadedModels?.length > 0) {
-        const parentId = loadedModels[0].parentId;
-        log.info("Using parentId:", parentId);
-        if (parentId) {
-          // Get folder info to show name
-          const folderRes = await fetch(
-            `https://${host}/tc/api/2.0/folders/${parentId}`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          const folderName = folderRes.ok ? (await folderRes.json()).name : "Prosjektmappe";
-          await loadFolder(parentId, folderName, token, host);
-          return;
+        const fileId = loadedModels[0].id || loadedModels[0].fileId;
+        log.info("Looking up file versions:", fileId);
+
+        const fileRes = await fetch(
+          `https://${host}/tc/api/2.1/projects/${project.id}/${fileId}/versions`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        log.info("versions lookup:", fileRes.status);
+        if (fileRes.ok) {
+          const fileData = await fileRes.json();
+          const item = fileData.items?.[0];
+          log.info("file item:", JSON.stringify(item).slice(0, 300));
+          const parentId = item?.parentId;
+          const parentName = item?.path?.[item.path.length - 1]?.name || "Prosjektmappe";
+          log.info("parentId:", parentId, "parentName:", parentName);
+          if (parentId) {
+            await loadFolder(parentId, parentName, token, host);
+            return;
+          }
         }
       }
 
