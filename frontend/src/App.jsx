@@ -1104,12 +1104,13 @@ function DownloadPage({ tc, onBack }) {
       const token = existingToken || tc.getAccessToken();
       const project = existingToken ? null : await tc.api.project.getCurrentProject();
       const host = existingHost || (project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com");
-      const url = `https://${host}/tc/api/2.0/folders/${folderId}/items?tokenThumburl=false&sort=+name`;
+      const url = `https://${host}/tc/api/2.1/folders/${folderId}/items?tokenThumburl=false&sort=+name`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       log.info("loadFolder:", folderId, "→", res.status);
       if (res.ok) {
         const data = await res.json();
         log.info("folder keys:", Object.keys(data));
+        log.info("folder data sample:", JSON.stringify(data).slice(0, 500));
         const list = data.list || data.items || [];
         setItems(list);
         setCurrentFolder(folderId);
