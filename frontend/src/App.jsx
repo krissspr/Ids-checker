@@ -29,20 +29,20 @@ function usePyodide() {
         if (!window.loadPyodide) {
           await new Promise((resolve, reject) => {
             const s = document.createElement("script");
-            s.src = "https://cdn.jsdelivr.net/pyodide/v0.27.4/full/pyodide.js";
+            s.src = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js";
             s.onload = resolve;
             s.onerror = reject;
             document.head.appendChild(s);
           });
         }
         const pyodide = await window.loadPyodide({
-          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.4/full/",
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/",
         });
         await pyodide.loadPackage("micropip");
         await pyodide.runPythonAsync(`
 import micropip
 await micropip.install([
-  "https://ifcopenshell.github.io/wasm-wheels/ifcopenshell-0.8.5-cp313-cp313-pyodide_2025_0_wasm32.whl",
+  "https://ifcopenshell.github.io/wasm-wheels/ifcopenshell-0.8.2+d50e806-cp312-cp312-emscripten_3_1_58_wasm32.whl",
   "ifctester",
 ])
         `);
