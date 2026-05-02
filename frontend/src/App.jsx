@@ -29,14 +29,14 @@ function usePyodide() {
         if (!window.loadPyodide) {
           await new Promise((resolve, reject) => {
             const s = document.createElement("script");
-            s.src = "https://cdn.jsdelivr.net/pyodide/v0.27.4/full/pyodide.js";
+            s.src = "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/pyodide.js";
             s.onload = resolve;
             s.onerror = reject;
             document.head.appendChild(s);
           });
         }
         const pyodide = await window.loadPyodide({
-          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.4/full/",
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/",
         });
         await pyodide.loadPackage(["micropip", "numpy"]);
         await pyodide.runPythonAsync(`
