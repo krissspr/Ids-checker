@@ -1514,7 +1514,7 @@ export default function IDSChecker() {
 
   const activeIfc = ifcTab === "upload" ? uploadedIfc : selectedModel;
   const activeIds = idsTab === "upload" ? uploadedIds : selectedIds;
-  const canRun = activeIfc && activeIds;
+  const canRun = activeIds && (ifcTab === "upload" ? uploadedIfc : (ifcTab === "viewer" && selectedModel));
   // Marking works as long as a model is loaded in viewer – regardless of IFC upload tab
   const canMark = !devMode && tc && selectedModel;
 
@@ -1629,8 +1629,26 @@ export default function IDSChecker() {
         setLoadingStep("Leser IFC-fil…");
         ifcBytes = await uploadedIfc.arrayBuffer();
         log.info("IFC upload:", uploadedIfc.name, ifcBytes.byteLength, "bytes");
+      } else if (ifcTab === "viewer" && selectedModel) {
+        setLoadingStep("Laster IFC fra TC…");
+        const token = tc.getAccessToken();
+        const project = await tc.api.project.getCurrentProject();
+        const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+        const urlRes = await fetch(
+          `https://${host}/tc/api/2.0/files/fs/${selectedModel.fileId}/downloadurl`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!urlRes.ok) throw new Error(`Kunne ikke hente nedlastings-URL: ${urlRes.status}`);
+        const urlData = await urlRes.json();
+        const dlUrl = urlData.url;
+        if (!dlUrl) throw new Error("Ingen nedlastings-URL returnert");
+        setLoadingStep("Laster ned IFC-fil fra TC…");
+        const dlRes = await fetch(dlUrl);
+        if (!dlRes.ok) throw new Error(`Nedlasting feilet: ${dlRes.status}`);
+        ifcBytes = await dlRes.arrayBuffer();
+        log.info("IFC from TC viewer:", selectedModel.name, ifcBytes.byteLength, "bytes");
       } else {
-        throw new Error("Last opp en IFC-fil for å validere");
+        throw new Error("Last opp en IFC-fil eller velg aktiv modell i viewer");
       }
 
       // Get IDS text
@@ -1770,10 +1788,9 @@ export default function IDSChecker() {
                 <div style={{ fontSize:11, color:M.gray6 }}>Ingen modell funnet i viewer</div>
               )}
               {/* Explain limitation */}
-              <div style={{background:M.yellowPale, border:`1px solid ${M.yellowDark}`, borderRadius:4, padding:10, fontSize:11, color:M.gray8, lineHeight:1.6}}>
-                <strong>⚠ IDS-validering krever opplastet fil</strong><br/>
-                TC konverterer IFC til TRIMBIM ved opplasting – originalfilen er ikke tilgjengelig via API.<br/>
-                Bruk fanen <em>Last opp</em> og velg IFC-filen fra din PC for å kjøre validering.
+              <div style={{background:M.greenPale, border:`1px solid ${M.green}`, borderRadius:4, padding:10, fontSize:11, color:M.gray8, lineHeight:1.6}}>
+                <strong>✓ IDS-validering støttes direkte fra viewer</strong><br/>
+                Filen lastes ned fra TC til nettleseren og valideres lokalt – ingen data sendes til Railway.
               </div>
             </div>
           ) : (
@@ -1783,7 +1800,7 @@ export default function IDSChecker() {
 
         <section>
           <div style={{fontSize:10,fontWeight:700,color:M.gray6,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>2 · IDS-regelsett</div>
-          <TabBar value={idsTab} onChange={setIdsTab} options={[["upload","Last opp"],["project","Fra prosjektet"]]}/>
+          <TabBar value={idsTab} onChange={setIdsTab} options={[["upload","Last opp"],["project","Tilgjengelige IDS-filer"]]}/>
           {idsTab === "project"
             ? projectIds.length === 0
               ? <div style={{fontSize:11,color:M.gray6,padding:"8px 0",lineHeight:1.6}}>
