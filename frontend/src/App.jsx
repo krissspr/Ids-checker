@@ -8,7 +8,7 @@ const M = {
   gray3: "#a3a6b1", gray1: "#cbcdd6", gray0: "#e0e1e9", grayLight: "#f1f1f6",
   white: "#ffffff", green: "#1e8a44", greenDark: "#006638", greenPale: "#e0eccf",
   red: "#da212c", redDark: "#ab1f26", redPale: "#fbd4d7",
-};
+};f
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://ids-checker-api.railway.app";
 
@@ -44,7 +44,7 @@ import micropip
 await micropip.install(
   "https://ifcopenshell.github.io/wasm-wheels/ifcopenshell-0.8.2+d50e806-cp312-cp312-emscripten_3_1_58_wasm32.whl"
 )
-await micropip.install(["elementpath", "xmlschema", "ifctester"], deps=False)
+await micropip.install(["elementpath", "xmlschema", "ifctester", "numpy"], deps=False)
         `);
         pyodideRef.current = pyodide;
         setPyStatus("ready");
