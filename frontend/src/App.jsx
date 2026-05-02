@@ -44,7 +44,7 @@ import micropip
 await micropip.install(
   "https://ifcopenshell.github.io/wasm-wheels/ifcopenshell-0.8.2+d50e806-cp312-cp312-emscripten_3_1_58_wasm32.whl"
 )
-await micropip.install(["elementpath", "xmlschema", "ifctester", "numpy"], deps=False)
+await micropip.install(["elementpath", "xmlschema", "ifctester"], deps=False)
         `);
         pyodideRef.current = pyodide;
         setPyStatus("ready");
@@ -1747,8 +1747,11 @@ export default function IDSChecker() {
           <TabBar value={idsTab} onChange={setIdsTab} options={[["upload","Last opp"],["project","Fra prosjektet"]]}/>
           {idsTab === "project"
             ? projectIds.length === 0
-              ? <div style={{fontSize:12,color:M.gray6}}>Ingen .ids-filer funnet.</div>
-              : projectIds.map(f => <IdsRow key={f.id} file={f} selected={selectedIds?.id===f.id} onSelect={setSelectedIds}/>)
+              ? <div style={{fontSize:11,color:M.gray6,padding:"8px 0",lineHeight:1.6}}>
+                  Ingen IDS-filer funnet.<br/>
+                  <span style={{fontSize:10}}>Legg .ids-filer i <code>backend/ids/</code> og sørg for at Railway kjører.</span>
+                </div>
+              : projectIds.map(f => <IdsRow key={f.name} file={f} selected={selectedIds?.name===f.name} onSelect={setSelectedIds}/>)
             : <UploadZone file={uploadedIds} onFile={setUploadedIds} accept=".ids" label=".ids-fil"/>
           }
         </section>
