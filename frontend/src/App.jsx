@@ -29,22 +29,23 @@ function usePyodide() {
         if (!window.loadPyodide) {
           await new Promise((resolve, reject) => {
             const s = document.createElement("script");
-            s.src = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js";
+            s.src = "https://cdn.jsdelivr.net/pyodide/v0.27.4/full/pyodide.js";
             s.onload = resolve;
             s.onerror = reject;
             document.head.appendChild(s);
           });
         }
         const pyodide = await window.loadPyodide({
-          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/",
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.4/full/",
         });
-        await pyodide.loadPackage("micropip");
+        await pyodide.loadPackage(["micropip", "numpy"]);
         await pyodide.runPythonAsync(`
 import micropip
 await micropip.install(
-  "https://ifcopenshell.github.io/wasm-wheels/ifcopenshell-0.8.2+d50e806-cp312-cp312-emscripten_3_1_58_wasm32.whl"
+  "https://ifcopenshell.github.io/wasm-wheels/ifcopenshell-0.8.5-cp313-cp313-pyodide_2025_0_wasm32.whl",
+  keep_going=True
 )
-await micropip.install(["elementpath", "xmlschema", "ifctester", "numpy"], deps=False)
+await micropip.install(["elementpath", "xmlschema", "ifctester"], deps=False)
         `);
         pyodideRef.current = pyodide;
         setPyStatus("ready");
@@ -70,8 +71,29 @@ await micropip.install(["elementpath", "xmlschema", "ifctester", "numpy"], deps=
 
     onStep?.("Kjører IDS-validering…");
     const result = await py.runPythonAsync(`
-import json, ifcopenshell
+import json, ifcopenshell, ifcopenshell.express
 from ifctester import ids
+import js
+
+# Register IFC4X3_ADD2 schema at runtime if not already available
+def ensure_schema(schema_name):
+    try:
+        ifcopenshell.ifcopenshell_wrapper.schema_by_name(schema_name)
+        return True
+    except Exception:
+        return False
+
+if not ensure_schema("IFC4X3_ADD2"):
+    try:
+        from pyodide.http import pyfetch
+        resp = await pyfetch("https://raw.githubusercontent.com/buildingSMART/IFC4.3.x-output/master/IFC.exp")
+        exp_text = await resp.string()
+        with open("/IFC4X3_ADD2.exp", "w") as f:
+            f.write(exp_text)
+        schema = ifcopenshell.express.parse("/IFC4X3_ADD2.exp")
+        ifcopenshell.register_schema(schema)
+    except Exception as e:
+        pass  # fallback will handle it
 
 ifc_model = ifcopenshell.open("/model.ifc")
 specs = ids.open("/rules.ids")
@@ -1634,7 +1656,24 @@ export default function IDSChecker() {
       }
 
       // Run validation in Pyodide
-      const data = await pyValidate(ifcBytes, idsText, setLoadingStep);
+      let data;
+      try {
+        data = await pyValidate(ifcBytes, idsText, setLoadingStep);
+      } catch (e) {
+        if (e.message?.includes("No schema named") || e.message?.includes("IFC4X3")) {
+          // Fall back to Railway for unsupported schemas
+          setLoadingStep("IFC4X3 – sender til Railway for validering…");
+          log.warn("Pyodide schema error, falling back to Railway:", e.message);
+          const form = new FormData();
+          form.append("ifc_file", new File([ifcBytes], uploadedIfc.name));
+          form.append("ids_file", new File([idsText], "rules.ids"));
+          const res = await fetch(`${API_BASE}/validate`, { method: "POST", body: form });
+          if (!res.ok) throw new Error(`Railway svarte med ${res.status}`);
+          data = await res.json();
+        } else {
+          throw e;
+        }
+      }
       log.ok("Done:", data.summary);
       setResults(data);
     } catch (e) {
