@@ -12,6 +12,181 @@ const M = {
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://ids-checker-api.railway.app";
 
+// ── Pyodide hook ──────────────────────────────────────────────────────────────
+function usePyodide() {
+  const pyodideRef = useRef(null);
+  const loadingPromiseRef = useRef(null);
+  const [pyStatus, setPyStatus] = useState("idle"); // idle | loading | ready | error
+
+  const load = () => {
+    // Return existing promise if already loading/loaded
+    if (loadingPromiseRef.current) return loadingPromiseRef.current;
+
+    loadingPromiseRef.current = (async () => {
+      if (pyodideRef.current) return pyodideRef.current;
+      setPyStatus("loading");
+      try {
+        if (!window.loadPyodide) {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = "https://cdn.jsdelivr.net/pyodide/v0.27.4/full/pyodide.js";
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+          });
+        }
+        const pyodide = await window.loadPyodide({
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.27.4/full/",
+        });
+        await pyodide.loadPackage("micropip");
+        await pyodide.runPythonAsync(`
+import micropip
+await micropip.install([
+  "https://ifcopenshell.github.io/wasm-wheels/ifcopenshell-0.8.5-cp313-cp313-pyodide_2025_0_wasm32.whl",
+  "ifctester",
+])
+        `);
+        pyodideRef.current = pyodide;
+        setPyStatus("ready");
+        return pyodide;
+      } catch (e) {
+        console.error("Pyodide load failed:", e);
+        setPyStatus("error");
+        loadingPromiseRef.current = null; // allow retry
+        throw e;
+      }
+    })();
+
+    return loadingPromiseRef.current;
+  };
+
+  const validate = async (ifcBytes, idsText, onStep) => {
+    if (!pyodideRef.current) throw new Error("Pyodide ikke klar");
+    const py = pyodideRef.current;
+
+    onStep?.("Skriver IFC til filsystem…");
+    py.FS.writeFile("/model.ifc", new Uint8Array(ifcBytes));
+    py.FS.writeFile("/rules.ids", new TextEncoder().encode(idsText));
+
+    onStep?.("Kjører IDS-validering…");
+    const result = await py.runPythonAsync(`
+import json, ifcopenshell
+from ifctester import ids
+
+ifc_model = ifcopenshell.open("/model.ifc")
+specs = ids.open("/rules.ids")
+specs.validate(ifc_model)
+
+result_specs = []
+for spec in specs.specifications:
+    failing = []
+    for entity in spec.failed_entities:
+        try:
+            name = getattr(entity, "Name", None) or "(uten navn)"
+            guid = getattr(entity, "GlobalId", None)
+            ifc_type = entity.is_a()
+        except:
+            name = str(entity)
+            guid = None
+            ifc_type = "ukjent"
+
+        datatype_issue = False
+        for req in spec.requirements:
+            for reason in (getattr(req, "failed_reasons", []) or []):
+                r = str(reason).lower()
+                if any(kw in r for kw in ["datatype","ifclabel","ifctext","ifcreal","ifcinteger","type mismatch"]):
+                    datatype_issue = True
+                    break
+
+        failing.append({"guid": guid, "type": ifc_type, "name": name, "datatype_issue": datatype_issue, "reason": ""})
+
+    passed = len(spec.passed_entities)
+    failed = len(spec.failed_entities)
+    total = passed + failed
+
+    # requirements_detail
+    reqs = []
+    for req in spec.requirements:
+        cn = req.__class__.__name__
+        card = getattr(req, "cardinality", "required") or "required"
+        if card == "optional":
+            continue
+        if cn == "Property":
+            pset = str(getattr(req, "propertySet", {}) or "")
+            if hasattr(getattr(req, "propertySet", None), "args"):
+                pset = req.propertySet.args[0] if req.propertySet.args else pset
+            prop = str(getattr(req, "baseName", {}) or "")
+            if hasattr(getattr(req, "baseName", None), "args"):
+                prop = req.baseName.args[0] if req.baseName.args else prop
+            data_type = str(getattr(req, "dataType", "") or "")
+            instructions = str(getattr(req, "instructions", "") or "")
+            val_obj = getattr(req, "value", None)
+            enum_vals = []
+            pattern = None
+            bounds = {}
+            if val_obj is not None:
+                t = getattr(val_obj, "type", None)
+                opts = getattr(val_obj, "options", None)
+                if t == "enumeration" and opts:
+                    enum_vals = list(opts) if not isinstance(opts, dict) else list(opts.keys())
+                elif t == "pattern" and opts:
+                    pattern = str(opts) if not isinstance(opts, dict) else str(list(opts.keys())[0])
+                elif t == "bounds" and isinstance(opts, dict):
+                    bounds = opts
+            # krav_tekst
+            if enum_vals:
+                krav = f"Skal ha en av følgende verdier: {', '.join(str(v) for v in enum_vals)}"
+            elif bounds:
+                parts = []
+                if "minExclusive" in bounds: parts.append(f"Større enn {bounds['minExclusive']}")
+                if "minInclusive" in bounds: parts.append(f"Minst {bounds['minInclusive']}")
+                if "maxExclusive" in bounds: parts.append(f"Mindre enn {bounds['maxExclusive']}")
+                if "maxInclusive" in bounds: parts.append(f"Maks {bounds['maxInclusive']}")
+                krav = ", ".join(parts) if parts else "Skal fylles ut"
+            elif pattern:
+                krav = "Skal fylles ut"
+            else:
+                krav = "Skal fylles ut"
+            if data_type:
+                krav += f" | Datatype: {data_type}"
+            reqs.append({"type": "Property", "pset": pset, "name": prop, "enum_values": enum_vals, "pattern": pattern, "bounds": bounds, "data_type": data_type, "instructions": instructions, "cardinality": card, "krav_tekst": krav, "description": f"{pset}.{prop}"})
+
+    # applicability_detail
+    appl = {"pset": None, "objekttype": None, "entity": None}
+    for facet in spec.applicability:
+        cn2 = facet.__class__.__name__
+        if cn2 == "Entity":
+            appl["entity"] = str(getattr(facet, "name", "") or "")
+        elif cn2 == "Property":
+            p2 = str(getattr(facet, "baseName", "") or "")
+            v2 = str(getattr(facet, "value", "") or "")
+            if p2.lower() in ("objekttype","type","objecttype"):
+                appl["objekttype"] = v2
+
+    result_specs.append({
+        "name": spec.name,
+        "status": "passed" if spec.status else "failed",
+        "applicability": str(spec.name),
+        "applicability_detail": appl,
+        "requirement": "",
+        "requirements_detail": reqs,
+        "failed_req_names": [],
+        "passed": passed, "failed": failed, "total": total,
+        "no_objects": total == 0,
+        "failures": failing[:50],
+        "more_failures": max(0, len(failing) - 50),
+    })
+
+total_passed = sum(1 for s in result_specs if s["status"] == "passed")
+total_failed = sum(1 for s in result_specs if s["status"] == "failed")
+json.dumps({"summary": {"passed": total_passed, "failed": total_failed, "total": total_passed + total_failed}, "specifications": result_specs})
+`);
+    return JSON.parse(result);
+  };
+
+  return { pyStatus, load, validate };
+}
+
 // ── Debug logger ──────────────────────────────────────────────────────────────
 const log = {
   info:  (...a) => console.log( "%c[IDS]", "color:#0063a3;font-weight:bold", ...a),
@@ -1260,8 +1435,9 @@ function DownloadPage({ tc, onBack }) {
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function IDSChecker() {
-  const [page, setPage] = useState("home"); // home | ids | props | download
+  const [page, setPage] = useState("home");
   const [tc, setTc] = useState(null);
+  const { pyStatus, load: loadPyodide, validate: pyValidate } = usePyodide();
   const [devMode, setDevMode] = useState(false);
   const [loadedModels, setLoadedModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState(null);
@@ -1282,6 +1458,18 @@ export default function IDSChecker() {
 
   useEffect(() => {
     (async () => {
+      // Load IDS files from Railway
+      try {
+        const res = await fetch(`${API_BASE}/ids-files`);
+        if (res.ok) {
+          const data = await res.json();
+          setProjectIds(data.files || []);
+        }
+      } catch (e) {
+        log.warn("Could not load IDS files from Railway:", e.message);
+        if (devMode) setProjectIds(DEV_IDS);
+      }
+
       const tcConn = await connectToTC();
       if (!tcConn) {
         setDevMode(true);
@@ -1296,6 +1484,9 @@ export default function IDSChecker() {
       setLoadedModels(models);
       if (models.length > 0) setSelectedModel(models[0]);
       setLoadingModels(false);
+
+      // Preload Pyodide in background
+      loadPyodide().catch(e => log.warn("Pyodide preload failed:", e.message));
     })();
   }, []);
 
@@ -1410,46 +1601,40 @@ export default function IDSChecker() {
     setIsRunning(true);
     log.group("handleRun");
     try {
-      const token = tc?.getAccessToken();
-      const form = new FormData();
+      // Get IFC bytes
+      let ifcBytes;
+      if (ifcTab === "upload" && uploadedIfc) {
+        setLoadingStep("Leser IFC-fil…");
+        ifcBytes = await uploadedIfc.arrayBuffer();
+        log.info("IFC upload:", uploadedIfc.name, ifcBytes.byteLength, "bytes");
+      } else {
+        throw new Error("Last opp en IFC-fil for å validere");
+      }
 
+      // Get IDS text
+      let idsText;
       if (idsTab === "upload" && uploadedIds) {
-        form.append("ids_file", uploadedIds);
+        setLoadingStep("Leser IDS-fil…");
+        idsText = await uploadedIds.text();
+        log.info("IDS upload:", uploadedIds.name);
+      } else if (idsTab === "project" && selectedIds) {
+        setLoadingStep(`Laster IDS: ${selectedIds.name}…`);
+        const res = await fetch(`${API_BASE}/ids-files/${selectedIds.name}`);
+        if (!res.ok) throw new Error(`Kunne ikke laste IDS-fil: ${res.status}`);
+        idsText = await res.text();
+        log.info("IDS from Railway:", selectedIds.name);
       } else {
-        form.append("ids_file", new File(["placeholder"], selectedIds?.name || "rules.ids"));
-        log.warn("IDS placeholder");
+        throw new Error("Velg en IDS-fil for å validere");
       }
 
-      if (ifcTab === "viewer" && selectedModel && token && !devMode) {
-        const proj = await tc?.api?.project?.getCurrentProject();
-        const runRegion = proj?.location === "europe" ? "app.eu" : "app";
-        log.info("TC region:", runRegion, "fileId:", selectedModel.fileId, "parentId:", selectedModel.parentId);
-        form.append("tc_file_id", selectedModel.fileId);
-        form.append("tc_file_name", selectedModel.name);
-        form.append("tc_parent_id", selectedModel.parentId || "");
-        form.append("tc_project_id", selectedModel.projectId || proj?.id || "");
-        form.append("tc_access_token", token);
-        form.append("tc_region", runRegion);
-        if (selectedModel.tcHost) form.append("tc_host", selectedModel.tcHost);
-        setLoadingStep("Backend laster IFC fra TC…");
-      } else if (ifcTab === "upload" && uploadedIfc) {
-        form.append("ifc_file", uploadedIfc);
-        setLoadingStep("Laster opp IFC-fil…");
-        log.info("IFC upload:", uploadedIfc.name);
-      } else {
-        form.append("ifc_file", new File(["placeholder"], selectedModel?.name || "model.ifc"));
-        log.warn("Dev placeholder");
-        setLoadingStep("Dev modus…");
+      // Load Pyodide if not ready (load() returns a promise)
+      if (pyStatus !== "ready") {
+        setLoadingStep("Laster Python-miljø (første gang tar ~30 sek)…");
+        await loadPyodide();
       }
 
-      setLoadingStep("Validerer mot IDS-regler…");
-      const res = await fetch(`${API_BASE}/validate`, { method: "POST", body: form });
-      log.info("Response:", res.status);
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new Error(detail?.detail || `Server svarte med ${res.status}`);
-      }
-      const data = await res.json();
+      // Run validation in Pyodide
+      const data = await pyValidate(ifcBytes, idsText, setLoadingStep);
       log.ok("Done:", data.summary);
       setResults(data);
     } catch (e) {
@@ -1568,6 +1753,16 @@ export default function IDSChecker() {
           }
         </section>
 
+        {pyStatus === "loading" && (
+          <div style={{ fontSize:10, color:M.blue, display:"flex", alignItems:"center", gap:6, padding:"4px 0" }}>
+            <Icon.Spinner color={M.blue}/> Laster Python-miljø…
+          </div>
+        )}
+        {pyStatus === "error" && (
+          <div style={{ fontSize:10, color:M.red, padding:"4px 0" }}>
+            ⚠ Python-miljø feilet – prøv å laste siden på nytt
+          </div>
+        )}
         <button disabled={!canRun||isRunning} onClick={handleRun} style={{ padding:"10px 0", borderRadius:4, border:"none", cursor:canRun&&!isRunning?"pointer":"not-allowed", background:canRun&&!isRunning?M.blue:M.gray1, color:canRun&&!isRunning?M.white:M.gray6, fontFamily:"inherit", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"background 0.2s" }}>
           {isRunning ? <><Icon.Spinner color={M.white}/> {loadingStep}</> : "▶  Kjør IDS-sjekk"}
         </button>
