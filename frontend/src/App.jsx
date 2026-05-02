@@ -8,7 +8,7 @@ const M = {
   gray3: "#a3a6b1", gray1: "#cbcdd6", gray0: "#e0e1e9", grayLight: "#f1f1f6",
   white: "#ffffff", green: "#1e8a44", greenDark: "#006638", greenPale: "#e0eccf",
   red: "#da212c", redDark: "#ab1f26", redPale: "#fbd4d7",
-};f
+};
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://ids-checker-api.railway.app";
 
