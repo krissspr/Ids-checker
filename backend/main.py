@@ -42,6 +42,38 @@ async def startup():
         print(f"Import FAILED: {e}", flush=True)
 
 
+IDS_DIR = os.path.join(os.path.dirname(__file__), "ids")
+os.makedirs(IDS_DIR, exist_ok=True)
+
+
+@app.get("/ids-files")
+def list_ids_files():
+    """List all available IDS files in the ids/ directory."""
+    files = []
+    for f in sorted(os.listdir(IDS_DIR)):
+        if f.endswith(".ids"):
+            path = os.path.join(IDS_DIR, f)
+            files.append({
+                "name": f,
+                "size": os.path.getsize(path),
+                "label": f.replace(".ids", "").replace("_", " ").title(),
+            })
+    return {"files": files}
+
+
+@app.get("/ids-files/{filename}")
+def get_ids_file(filename: str):
+    """Return a specific IDS file."""
+    if not filename.endswith(".ids"):
+        raise HTTPException(400, "Kun .ids-filer støttes")
+    # Sanitize filename to prevent path traversal
+    filename = os.path.basename(filename)
+    path = os.path.join(IDS_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(404, f"IDS-fil ikke funnet: {filename}")
+    return FileResponse(path, media_type="application/xml", filename=filename)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
