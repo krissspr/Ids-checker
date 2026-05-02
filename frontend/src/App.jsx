@@ -44,7 +44,7 @@ import micropip
 await micropip.install(
   "https://ifcopenshell.github.io/wasm-wheels/ifcopenshell-0.8.2+d50e806-cp312-cp312-emscripten_3_1_58_wasm32.whl"
 )
-await micropip.install(["elementpath", "xmlschema", "ifctester", "numpy"], deps=False)
+await micropip.install(["elementpath", "xmlschema", "ifctester"], deps=False)
         `);
         pyodideRef.current = pyodide;
         setPyStatus("ready");
