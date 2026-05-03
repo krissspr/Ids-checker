@@ -300,9 +300,19 @@ const DEV_IDS = [{ id: "ids-a", name: "Byggherre_krav_v2.ids", versionDate: "202
 function useTimer(running) {
   const [seconds, setSeconds] = useState(0);
   const ref = useRef(null);
+  const startRef = useRef(null);
+
   useEffect(() => {
-    if (running) { setSeconds(0); ref.current = setInterval(() => setSeconds(s => s + 1), 1000); }
-    else clearInterval(ref.current);
+    if (running) {
+      setSeconds(0);
+      startRef.current = Date.now();
+      // Use shorter interval and calculate from start time to survive blocking
+      ref.current = setInterval(() => {
+        setSeconds(Math.floor((Date.now() - startRef.current) / 1000));
+      }, 200);
+    } else {
+      clearInterval(ref.current);
+    }
     return () => clearInterval(ref.current);
   }, [running]);
   return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
