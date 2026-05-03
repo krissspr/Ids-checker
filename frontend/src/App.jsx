@@ -605,8 +605,34 @@ function PropertyEditor({ spec, model, tc, devMode, onBack, pyUpdateProperties }
     model?.name?.replace(".ifc", "_korrigert.ifc") || "korrigert_modell.ifc"
   );
 
-  const failedGuids = spec.failures.map(f => f.guid).filter(Boolean);
-  const anyFilled = requirements.some((_, i) => (values[i] || "").trim().length > 0);
+  const [selectedFolder, setSelectedFolder] = useState(null);
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const handleUploadToTC = async () => {
+    if (!selectedFolder) { setShowFolderPicker(true); return; }
+    setUploading(true);
+    setSaveResult(null);
+    log.group("uploadToTC");
+    try {
+      const reqArray = filledReqs.map(({ req, value, data_type }) => ({
+        pset: req.pset || "", name: req.name, value, data_type,
+      }));
+      const outBytes = await pyUpdateProperties(reqArray, failedGuids, outputFilename, setSaveStep);
+      const result = await uploadFileToTC(tc, outBytes, outputFilename, selectedFolder.id);
+      setSaveResult({ success: true, count: failedGuids.length, uploadedToTC: true, tcFile: result });
+      log.ok("Uploaded:", result);
+    } catch (e) {
+      log.error("uploadToTC failed:", e.message);
+      setSaveResult({ success: false, message: e.message });
+    } finally {
+      setUploading(false);
+      setSaveStep(null);
+      log.end();
+    }
+  };
+
+  const isSaving = saving || uploading;
   const filledReqs = requirements
     .map((req, i) => ({ req, value: (values[i] || "").trim(), data_type: datatypes[i] || "" }))
     .filter(({ value }) => value.length > 0);
@@ -769,29 +795,68 @@ function PropertyEditor({ spec, model, tc, devMode, onBack, pyUpdateProperties }
           />
         </div>
 
-        {/* Save button */}
+        {/* Save buttons */}
         {!saveResult && (
-          <button
-            disabled={!anyFilled || saving}
-            onClick={handleSave}
-            style={{ padding:"10px 0", borderRadius:4, border:"none", cursor:anyFilled&&!saving?"pointer":"not-allowed", background:anyFilled&&!saving?M.blue:M.gray1, color:anyFilled&&!saving?M.white:M.gray6, fontFamily:"inherit", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"background 0.2s" }}
-          >
-            {saving
-              ? <><Icon.Spinner color={M.white}/> {saveStep || "Redigerer…"}</>
-              : <><Icon.Download/> Last ned korrigert IFC ({filledReqs.length} egenskaper)</>
-            }
-          </button>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {/* Download to PC */}
+            <button
+              disabled={!anyFilled || isSaving}
+              onClick={handleSave}
+              style={{ padding:"10px 0", borderRadius:4, border:`1px solid ${M.blue}`, cursor:anyFilled&&!isSaving?"pointer":"not-allowed", background:M.white, color:M.blue, fontFamily:"inherit", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"all 0.2s" }}
+            >
+              {saving
+                ? <><Icon.Spinner color={M.blue}/> {saveStep || "Redigerer…"}</>
+                : <><Icon.Download/> Last ned til PC</>
+              }
+            </button>
+
+            {/* Upload to TC */}
+            {tc && pyUpdateProperties && (
+              <>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <button
+                    disabled={!anyFilled || isSaving}
+                    onClick={handleUploadToTC}
+                    style={{ flex:1, padding:"10px 0", borderRadius:4, border:"none", cursor:anyFilled&&!isSaving?"pointer":"not-allowed", background:anyFilled&&!isSaving?M.blue:M.gray1, color:anyFilled&&!isSaving?M.white:M.gray6, fontFamily:"inherit", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"background 0.2s" }}
+                  >
+                    {uploading
+                      ? <><Icon.Spinner color={M.white}/> {saveStep || "Laster opp…"}</>
+                      : <><Icon.Upload color={M.white}/> Last opp til TC</>
+                    }
+                  </button>
+                  <button
+                    onClick={() => setShowFolderPicker(true)}
+                    style={{ padding:"10px 12px", borderRadius:4, border:`1px solid ${M.gray1}`, background:selectedFolder?M.bluePale:M.white, color:selectedFolder?M.blue:M.gray6, cursor:"pointer", fontFamily:"inherit", fontSize:11, whiteSpace:"nowrap" }}
+                  >
+                    {selectedFolder ? `📁 ${selectedFolder.name}` : "📁 Velg mappe"}
+                  </button>
+                </div>
+                {!selectedFolder && (
+                  <div style={{ fontSize:10, color:M.gray6 }}>Velg en mappe i TC før opplasting</div>
+                )}
+              </>
+            )}
+          </div>
         )}
 
-        {/* Result */}
+        {showFolderPicker && tc && (
+          <FolderPicker
+            tc={tc}
+            onSelect={folder => { setSelectedFolder(folder); setShowFolderPicker(false); }}
+            onClose={() => setShowFolderPicker(false)}
+          />
+        )}
+
         {saveResult && (
           <div style={{ padding:"10px 12px", borderRadius:4, fontSize:12, border:`1px solid ${saveResult.success?M.green:M.red}`, background:saveResult.success?M.greenPale:M.redPale, color:saveResult.success?M.greenDark:M.redDark, lineHeight:1.6 }}>
             {saveResult.success
-              ? <>✓ Korrigert IFC lastet ned – {saveResult.count} objekter oppdatert</>
+              ? saveResult.uploadedToTC
+                ? <><strong>✓ Lastet opp til TC!</strong><br/>{saveResult.count} objekter oppdatert – {saveResult.tcFile?.name}</>
+                : <>✓ Korrigert IFC lastet ned – {saveResult.count} objekter oppdatert</>
               : `✕ ${saveResult.message}`
             }
             {saveResult.success && (
-              <button onClick={() => { setSaveResult(null); }}
+              <button onClick={() => setSaveResult(null)}
                 style={{ display:"block", marginTop:8, fontSize:11, padding:"4px 10px", borderRadius:3, border:`1px solid ${M.green}`, background:M.white, color:M.greenDark, cursor:"pointer", fontFamily:"inherit" }}>
                 Gjør en ny endring
               </button>
@@ -801,6 +866,159 @@ function PropertyEditor({ spec, model, tc, devMode, onBack, pyUpdateProperties }
       </div>
     </div>
   );
+}
+
+// ── Folder Picker Modal ───────────────────────────────────────────────────────
+function FolderPicker({ tc, onSelect, onClose }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [path, setPath] = useState([]);
+  const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [host, setHost] = useState(null);
+  const [token, setToken] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const t = tc.getAccessToken();
+      const project = await tc.api.project.getCurrentProject();
+      const h = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+      setToken(t);
+      setHost(h);
+
+      const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
+      if (loadedModels?.length > 0) {
+        const fileId = loadedModels[0].id;
+        const fileRes = await fetch(
+          `https://${h}/tc/api/2.1/projects/${project.id}/${fileId}/versions`,
+          { headers: { Authorization: `Bearer ${t}` } }
+        );
+        if (fileRes.ok) {
+          const data = await fileRes.json();
+          const parentId = data.items?.[0]?.parentId;
+          if (parentId) {
+            await loadFolder(parentId, "Prosjektmappe", t, h);
+            return;
+          }
+        }
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const loadFolder = async (folderId, folderName, t, h) => {
+    setLoading(true);
+    const tok = t || token;
+    const ho = h || host;
+    const res = await fetch(
+      `https://${ho}/tc/api/2.1/folders/${folderId}/items?tokenThumburl=false&sort=+name`,
+      { headers: { Authorization: `Bearer ${tok}` } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const list = (data.list || data.items || []).filter(i => i.type === "FOLDER");
+      setItems(list);
+      setCurrentFolderId(folderId);
+      if (folderName) setPath(p => [...p, { id: folderId, name: folderName }]);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ background:M.white, borderRadius:8, width:320, maxHeight:480, display:"flex", flexDirection:"column", boxShadow:"0 8px 32px rgba(0,0,0,0.2)" }}>
+        <div style={{ padding:"12px 14px", borderBottom:`1px solid ${M.gray0}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ fontWeight:700, fontSize:13, color:M.gray }}>Velg mappe i TC</div>
+          <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", fontSize:18, color:M.gray6, lineHeight:1 }}>×</button>
+        </div>
+
+        {/* Breadcrumb */}
+        <div style={{ padding:"6px 12px", fontSize:11, color:M.gray6, borderBottom:`1px solid ${M.gray0}`, display:"flex", gap:4, flexWrap:"wrap" }}>
+          {path.map((p, i) => (
+            <span key={p.id} style={{ display:"flex", alignItems:"center", gap:4 }}>
+              {i > 0 && <span>/</span>}
+              <span style={{ cursor:"pointer", color:i===path.length-1?M.gray:M.blue }}
+                onClick={() => {
+                  const newPath = path.slice(0, i);
+                  setPath(newPath);
+                  loadFolder(p.id, null, null, null);
+                }}>
+                {p.name}
+              </span>
+            </span>
+          ))}
+        </div>
+
+        {/* Folder list */}
+        <div style={{ flex:1, overflowY:"auto", padding:"6px 8px" }}>
+          {loading ? (
+            <div style={{ padding:16, display:"flex", gap:8, alignItems:"center", color:M.gray6, fontSize:12 }}>
+              <Icon.Spinner/> Laster…
+            </div>
+          ) : items.length === 0 ? (
+            <div style={{ padding:12, fontSize:11, color:M.gray6 }}>Ingen undermapper</div>
+          ) : items.map(item => (
+            <div key={item.id}
+              onClick={() => loadFolder(item.id, item.name, null, null)}
+              style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 8px", borderRadius:4, cursor:"pointer", fontSize:12, color:M.gray }}
+              onMouseEnter={e => e.currentTarget.style.background = M.bluePale}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+            >
+              <span>📁</span>
+              <span style={{ flex:1 }}>{item.name}</span>
+              <span style={{ fontSize:10, color:M.gray6 }}>→</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Select current folder */}
+        <div style={{ padding:"10px 12px", borderTop:`1px solid ${M.gray0}`, display:"flex", gap:8 }}>
+          <button onClick={onClose}
+            style={{ flex:1, padding:"8px 0", borderRadius:4, border:`1px solid ${M.gray1}`, background:M.white, color:M.gray6, cursor:"pointer", fontFamily:"inherit", fontSize:12 }}>
+            Avbryt
+          </button>
+          <button
+            disabled={!currentFolderId}
+            onClick={() => onSelect({ id: currentFolderId, name: path[path.length-1]?.name || "Mappe" })}
+            style={{ flex:2, padding:"8px 0", borderRadius:4, border:"none", background:currentFolderId?M.blue:M.gray1, color:currentFolderId?M.white:M.gray6, cursor:currentFolderId?"pointer":"not-allowed", fontFamily:"inherit", fontSize:12, fontWeight:600 }}>
+            Velg denne mappen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TC Upload function ─────────────────────────────────────────────────────────
+async function uploadFileToTC(tc, fileBytes, filename, folderId) {
+  const token = tc.getAccessToken();
+  const project = await tc.api.project.getCurrentProject();
+  const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+
+  // Step 1: Initiate upload
+  const initRes = await fetch(
+    `https://${host}/tc/api/2.0/files/fs/upload?parentId=${folderId}&parentType=FOLDER`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: filename }),
+    }
+  );
+  if (!initRes.ok) throw new Error(`Oppstart av opplasting feilet: ${initRes.status}`);
+  const initData = await initRes.json();
+
+  // Find source file upload URL
+  const sourceContent = initData.contents?.find(c => c.type === "SOURCE" || !c.type);
+  const uploadUrl = sourceContent?.url || initData.contents?.[0]?.url;
+  if (!uploadUrl) throw new Error("Ingen upload-URL returnert fra TC");
+
+  // Step 2: PUT file content (no Authorization header!)
+  const putRes = await fetch(uploadUrl, {
+    method: "PUT",
+    body: new Blob([fileBytes], { type: "application/octet-stream" }),
+  });
+  if (!putRes.ok) throw new Error(`Opplasting feilet: ${putRes.status}`);
+
+  return { fileId: initData.fileId, name: filename };
 }
 
 // ── ToDo editor (inline in SpecRow) ──────────────────────────────────────────
