@@ -206,7 +206,121 @@ json.dumps({"summary": {"passed": total_passed, "failed": total_failed, "total":
     return JSON.parse(result);
   };
 
-  return { pyStatus, load, validate };
+  const updateProperties = async (requirements, guids, outputFilename, onStep) => {
+    if (!pyodideRef.current) throw new Error("Pyodide ikke klar");
+    const py = pyodideRef.current;
+
+    // Check that model.ifc exists in virtual FS
+    try { py.FS.stat("/model.ifc"); } catch {
+      throw new Error("IFC-fil ikke funnet i Pyodide – kjør validering først");
+    }
+
+    onStep?.("Redigerer egenskaper i IFC…");
+
+    // Pass requirements and guids as JSON
+    py.globals.set("requirements_json", JSON.stringify(requirements));
+    py.globals.set("guids_json", JSON.stringify(guids));
+
+    await py.runPythonAsync(`
+import json, ifcopenshell, ifcopenshell.api
+
+req_list = json.loads(requirements_json)
+guid_list = json.loads(guids_json)
+
+# IFC datatype mapping
+DATATYPE_MAP = {
+    "IfcLabel": lambda v: ifcopenshell.util.element.get_pset,  # handled below
+    "IfcText": str,
+    "IfcIdentifier": str,
+    "IfcReal": float,
+    "IfcInteger": int,
+    "IfcBoolean": lambda v: v.lower() in ("true", "1", "ja", "yes"),
+    "IfcLengthMeasure": float,
+    "IfcAreaMeasure": float,
+    "IfcVolumeMeasure": float,
+    "IfcMassMeasure": float,
+    "IfcPositiveLengthMeasure": float,
+    "IfcPlaneAngleMeasure": float,
+    "IfcCountMeasure": int,
+}
+
+def cast_value(value, data_type, schema):
+    """Cast value to correct IFC type."""
+    if not data_type:
+        return value
+    dt = data_type.strip()
+    try:
+        ifc_type = schema.declaration_by_name(dt)
+        if ifc_type:
+            return ifc_type(value)
+    except Exception:
+        pass
+    # Fallback: basic Python types
+    if dt in ("IfcReal", "IfcLengthMeasure", "IfcAreaMeasure", "IfcVolumeMeasure",
+              "IfcMassMeasure", "IfcPositiveLengthMeasure", "IfcPlaneAngleMeasure"):
+        return float(value)
+    if dt in ("IfcInteger", "IfcCountMeasure"):
+        return int(value)
+    if dt == "IfcBoolean":
+        return value.lower() in ("true", "1", "ja", "yes")
+    return value  # string fallback (IfcLabel, IfcText etc)
+
+model = ifcopenshell.open("/model.ifc")
+schema = model.schema_identifier
+ifc_schema = ifcopenshell.ifcopenshell_wrapper.schema_by_name(schema)
+updated = 0
+
+for guid in guid_list:
+    try:
+        entity = model.by_guid(guid)
+    except Exception:
+        continue
+    if entity is None:
+        continue
+
+    for req in req_list:
+        pset_name = req.get("pset", "")
+        prop_name = req.get("name", "")
+        prop_value = req.get("value", "")
+        data_type = req.get("data_type", "")
+
+        if not pset_name or not prop_name or prop_value == "":
+            continue
+
+        # Cast to correct IFC type
+        try:
+            typed_value = cast_value(prop_value, data_type, ifc_schema)
+        except Exception:
+            typed_value = prop_value
+
+        # Find or create pset
+        psets = ifcopenshell.util.element.get_psets(entity)
+        if pset_name in psets:
+            pset_obj = model.by_id(psets[pset_name]["id"])
+            ifcopenshell.api.run("pset.edit_pset", model,
+                pset=pset_obj,
+                properties={prop_name: typed_value},
+            )
+        else:
+            pset_obj = ifcopenshell.api.run("pset.add_pset", model,
+                product=entity, name=pset_name)
+            ifcopenshell.api.run("pset.edit_pset", model,
+                pset=pset_obj,
+                properties={prop_name: typed_value},
+            )
+
+    updated += 1
+
+model.write("/model_korrigert.ifc")
+print(f"Updated {updated} objects", flush=True)
+`);
+
+    onStep?.("Leser korrigert fil…");
+    const outBytes = py.FS.readFile("/model_korrigert.ifc");
+    return outBytes;
+  };
+
+  return { pyStatus, load, validate, updateProperties };
 }
 
 // ── Debug logger ──────────────────────────────────────────────────────────────
@@ -390,7 +504,7 @@ function IdsRow({ file, selected, onSelect }) {
 }
 
 // ── Requirement row with enum dropdown ────────────────────────────────────────
-function RequirementRow({ req, value, onChange }) {
+function RequirementRow({ req, value, onChange, datatype, onDatatypeChange }) {
   const [useCustom, setUseCustom] = useState(false);
   const hasEnum = req.enum_values && req.enum_values.length > 0;
 
@@ -421,21 +535,33 @@ function RequirementRow({ req, value, onChange }) {
           <input
             value={value}
             onChange={e => onChange(e.target.value)}
-            placeholder={req.krav_tekst || (req.pattern ? `Mønster: ${req.pattern}` : "Fyll inn verdi")}
+            placeholder={req.krav_tekst || "Fyll inn verdi"}
             style={{ flex:1, padding:"8px 10px", fontSize:12, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"inherit", color:M.gray, background:M.white, outline:"none" }}
             onFocus={e => e.target.style.borderColor = M.blue}
             onBlur={e => e.target.style.borderColor = M.gray1}
           />
           {hasEnum && (
-            <button
-              onClick={() => { setUseCustom(false); onChange(""); }}
-              style={{ fontSize:10, padding:"6px 8px", borderRadius:4, border:`1px solid ${M.gray1}`, background:M.white, color:M.blue, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}
-            >
+            <button onClick={() => { setUseCustom(false); onChange(""); }}
+              style={{ fontSize:10, padding:"6px 8px", borderRadius:4, border:`1px solid ${M.gray1}`, background:M.white, color:M.blue, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
               ← Vis liste
             </button>
           )}
         </div>
       )}
+
+      {/* Datatype selector */}
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:5 }}>
+        <label style={{ fontSize:10, color:M.gray6, whiteSpace:"nowrap" }}>Datatype:</label>
+        <select
+          value={datatype || "IfcLabel"}
+          onChange={e => onDatatypeChange(e.target.value)}
+          style={{ flex:1, padding:"4px 8px", fontSize:11, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"monospace", color:M.gray, background:M.white, cursor:"pointer" }}
+        >
+          {IFC_DATATYPES.map(dt => (
+            <option key={dt} value={dt}>{dt}</option>
+          ))}
+        </select>
+      </div>
 
       {hasEnum && !useCustom && value === "" && (
         <div style={{ fontSize:10, color:M.gray6, marginTop:3 }}>
@@ -447,90 +573,61 @@ function RequirementRow({ req, value, onChange }) {
 }
 
 // ── Property Editor Page ──────────────────────────────────────────────────────
-function PropertyEditor({ spec, model, tc, devMode, onBack }) {
+const IFC_DATATYPES = [
+  "IfcLabel", "IfcText", "IfcIdentifier",
+  "IfcReal", "IfcInteger", "IfcBoolean",
+  "IfcLengthMeasure", "IfcAreaMeasure", "IfcVolumeMeasure",
+  "IfcMassMeasure", "IfcPositiveLengthMeasure", "IfcPlaneAngleMeasure",
+  "IfcCountMeasure",
+];
+
+function PropertyEditor({ spec, model, tc, devMode, onBack, pyUpdateProperties }) {
   const requirements = spec.requirements_detail || [];
 
-  // values: { [index]: string }
   const [values, setValues] = useState(() => {
     const init = {};
     requirements.forEach((_, i) => { init[i] = ""; });
     return init;
   });
 
-  // Two-phase: first "set properties" -> preview, then choose download/upload
-  const [phase, setPhase] = useState("edit"); // "edit" | "save"
+  // Per-requirement datatype override (prefilled from IDS)
+  const [datatypes, setDatatypes] = useState(() => {
+    const init = {};
+    requirements.forEach((req, i) => { init[i] = req.data_type || "IfcLabel"; });
+    return init;
+  });
+
+  const [phase, setPhase] = useState("edit");
   const [saving, setSaving] = useState(false);
+  const [saveStep, setSaveStep] = useState(null);
   const [saveResult, setSaveResult] = useState(null);
-  const [uploadMode, setUploadMode] = useState("download");
-  const [tcFolderId, setTcFolderId] = useState("");
   const [outputFilename, setOutputFilename] = useState(
     model?.name?.replace(".ifc", "_korrigert.ifc") || "korrigert_modell.ifc"
   );
 
   const failedGuids = spec.failures.map(f => f.guid).filter(Boolean);
-
-  // At least one requirement must be filled to proceed
   const anyFilled = requirements.some((_, i) => (values[i] || "").trim().length > 0);
-  // Only apply requirements that have values
   const filledReqs = requirements
-    .map((req, i) => ({ req, value: (values[i] || "").trim() }))
+    .map((req, i) => ({ req, value: (values[i] || "").trim(), data_type: datatypes[i] || "" }))
     .filter(({ value }) => value.length > 0);
 
-  log.info("PropertyEditor spec:", spec.name);
-  log.info("requirements_detail:", requirements);
-  log.info("failedGuids:", failedGuids);
-
-  const buildFormData = async (uploadToProject) => {
-    const token = tc?.getAccessToken();
-    const project = await tc?.api?.project?.getCurrentProject().catch(() => null);
-    const region = project?.location === "europe" ? "app.eu" : "app";
-    log.info("region:", region, "project:", project?.id, "host:", model?.tcHost);
-
-    const reqArray = filledReqs.map(({ req, value }) => ({
-      pset: req.pset || "",
-      name: req.name,
-      value,
-    }));
-    log.info("requirements to apply:", reqArray);
-
-    const form = new FormData();
-    form.append("tc_file_id", model?.fileId || "");
-    form.append("tc_file_name", model?.name || "");
-    form.append("tc_parent_id", model?.parentId || "");
-    form.append("tc_access_token", token || "");
-    form.append("tc_region", region);
-    if (model?.tcHost) form.append("tc_host", model.tcHost);
-    form.append("tc_project_id", project?.id || "");
-    form.append("tc_folder_id", tcFolderId || "");
-    form.append("upload_to_project", uploadToProject ? "true" : "false");
-    form.append("requirements", JSON.stringify(reqArray));
-    form.append("guids", JSON.stringify(failedGuids));
-    form.append("output_filename", outputFilename);
-    return form;
-  };
-
-  const handleSave = async (uploadToProject = false) => {
+  const handleSave = async () => {
     setSaving(true);
     setSaveResult(null);
-    log.group("handleSave upload=" + uploadToProject);
-
+    log.group("handleSave pyodide");
     try {
-      const form = await buildFormData(uploadToProject);
-      const res = await fetch(`${API_BASE}/update-properties`, { method: "POST", body: form });
-      log.info("Response:", res.status, res.headers.get("content-type"));
+      const reqArray = filledReqs.map(({ req, value, data_type }) => ({
+        pset: req.pset || "",
+        name: req.name,
+        value,
+        data_type,
+      }));
 
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new Error(detail?.detail || `Server svarte med ${res.status}`);
-      }
-
-      const contentType = res.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await res.json();
-        log.ok("Uploaded to TC:", data);
-        setSaveResult({ success: true, count: failedGuids.length, uploadedToTC: true });
-      } else {
-        const blob = await res.blob();
+      // Use Pyodide if available
+      if (pyUpdateProperties) {
+        const outBytes = await pyUpdateProperties(reqArray, failedGuids, outputFilename, setSaveStep);
+        // Download
+        const blob = new Blob([outBytes], { type: "application/octet-stream" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -539,14 +636,38 @@ function PropertyEditor({ spec, model, tc, devMode, onBack }) {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        log.ok("Download triggered");
-        setSaveResult({ success: true, count: failedGuids.length, uploadedToTC: false });
+        setSaveResult({ success: true, count: failedGuids.length });
+      } else {
+        // Fallback to Railway
+        const token = tc?.getAccessToken();
+        const project = await tc?.api?.project?.getCurrentProject().catch(() => null);
+        const region = project?.location === "europe" ? "app.eu" : "app";
+        const form = new FormData();
+        form.append("tc_access_token", token || "");
+        form.append("tc_region", region);
+        if (model?.tcHost) form.append("tc_host", model.tcHost);
+        form.append("tc_project_id", project?.id || "");
+        form.append("upload_to_project", "false");
+        form.append("requirements", JSON.stringify(reqArray));
+        form.append("guids", JSON.stringify(failedGuids));
+        form.append("output_filename", outputFilename);
+        const res = await fetch(`${API_BASE}/update-properties`, { method: "POST", body: form });
+        if (!res.ok) throw new Error(`Server svarte med ${res.status}`);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = outputFilename;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setSaveResult({ success: true, count: failedGuids.length });
       }
     } catch (e) {
       log.error("handleSave failed:", e.message);
       setSaveResult({ success: false, message: e.message });
     } finally {
       setSaving(false);
+      setSaveStep(null);
       log.end();
     }
   };
@@ -606,6 +727,8 @@ function PropertyEditor({ spec, model, tc, devMode, onBack }) {
                 req={req}
                 value={values[i] || ""}
                 onChange={v => setValues(prev => ({ ...prev, [i]: v }))}
+                datatype={datatypes[i] || req.data_type || "IfcLabel"}
+                onDatatypeChange={v => setDatatypes(prev => ({ ...prev, [i]: v }))}
               />
             ))
           )}
@@ -636,132 +759,39 @@ function PropertyEditor({ spec, model, tc, devMode, onBack }) {
           />
         </div>
 
-        {/* Destination */}
+        {/* Filnavn */}
         <div>
-          <div style={{ fontSize:11, fontWeight:600, color:M.gray8, marginBottom:8 }}>Lagre til</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", padding:"8px 10px", borderRadius:4, border:`1px solid ${uploadMode==="download"?M.blue:M.gray0}`, background:uploadMode==="download"?M.bluePale:M.white }}>
-              <input type="radio" name="uploadMode" value="download" checked={uploadMode==="download"} onChange={() => setUploadMode("download")} style={{accentColor:M.blue}}/>
-              <div>
-                <div style={{fontSize:12,fontWeight:600,color:M.gray}}>Last ned til PC</div>
-                <div style={{fontSize:10,color:M.gray6}}>Fil lastes ned til din nedlastingsmappe</div>
-              </div>
-            </label>
-            <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", padding:"8px 10px", borderRadius:4, border:`1px solid ${uploadMode==="tc"?M.blue:M.gray0}`, background:uploadMode==="tc"?M.bluePale:M.white }}>
-              <input type="radio" name="uploadMode" value="tc" checked={uploadMode==="tc"} onChange={() => setUploadMode("tc")} style={{accentColor:M.blue}}/>
-              <div>
-                <div style={{fontSize:12,fontWeight:600,color:M.gray}}>Last opp til TC-prosjektet</div>
-                <div style={{fontSize:10,color:M.gray6}}>Filen lastes opp direkte til prosjektet</div>
-              </div>
-            </label>
-          </div>
-          {uploadMode === "tc" && (
-            <div style={{ marginTop:8 }}>
-              <label style={{ fontSize:11, fontWeight:600, color:M.gray8, display:"block", marginBottom:4 }}>
-                Mappe-ID <span style={{fontWeight:400,color:M.gray6}}>(valgfri – tom = rotmappe)</span>
-              </label>
-              <input value={tcFolderId} onChange={e => setTcFolderId(e.target.value)}
-                placeholder="f.eks. d4WBP_i9g0s"
-                style={{ width:"100%", padding:"8px 10px", fontSize:12, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"monospace", color:M.gray, background:M.white, outline:"none" }}
-                onFocus={e => e.target.style.borderColor = M.blue}
-                onBlur={e => e.target.style.borderColor = M.gray1}
-              />
-            </div>
-          )}
+          <label style={{ fontSize:11, fontWeight:600, color:M.gray8, display:"block", marginBottom:4 }}>Filnavn på korrigert fil</label>
+          <input value={outputFilename} onChange={e => setOutputFilename(e.target.value)}
+            style={{ width:"100%", padding:"8px 10px", fontSize:12, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"monospace", color:M.gray, background:M.white, outline:"none" }}
+            onFocus={e => e.target.style.borderColor = M.blue}
+            onBlur={e => e.target.style.borderColor = M.gray1}
+          />
         </div>
 
-        {/* Phase 1: Set properties button */}
-        {phase === "edit" && (
+        {/* Save button */}
+        {!saveResult && (
           <button
-            disabled={!anyFilled}
-            onClick={() => setPhase("save")}
-            style={{
-              padding:"10px 0", borderRadius:4, border:"none",
-              cursor: anyFilled ? "pointer" : "not-allowed",
-              background: anyFilled ? M.blue : M.gray1,
-              color: anyFilled ? M.white : M.gray6,
-              fontFamily:"inherit", fontSize:13, fontWeight:600,
-              display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-              transition:"background 0.2s",
-            }}
+            disabled={!anyFilled || saving}
+            onClick={handleSave}
+            style={{ padding:"10px 0", borderRadius:4, border:"none", cursor:anyFilled&&!saving?"pointer":"not-allowed", background:anyFilled&&!saving?M.blue:M.gray1, color:anyFilled&&!saving?M.white:M.gray6, fontFamily:"inherit", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"background 0.2s" }}
           >
-            ✓ Sett egenskaper ({filledReqs.length} av {requirements.length})
+            {saving
+              ? <><Icon.Spinner color={M.white}/> {saveStep || "Redigerer…"}</>
+              : <><Icon.Download/> Last ned korrigert IFC ({filledReqs.length} egenskaper)</>
+            }
           </button>
-        )}
-
-        {/* Phase 2: Download / upload buttons */}
-        {phase === "save" && !saveResult && (
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            <div style={{ fontSize:11, color:M.blue, fontWeight:600, marginBottom:2 }}>
-              Klar – velg hva du vil gjøre med den korrigerte IFC-filen:
-            </div>
-
-            <button
-              disabled={saving}
-              onClick={() => handleSave(false)}
-              style={{
-                padding:"10px 0", borderRadius:4, border:`1px solid ${M.blue}`,
-                cursor: saving ? "not-allowed" : "pointer",
-                background: saving ? M.bluePale : M.white,
-                color: M.blue, fontFamily:"inherit", fontSize:12, fontWeight:600,
-                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-              }}
-            >
-              {saving ? <><Icon.Spinner color={M.blue}/> Genererer…</> : <><Icon.Download/> Last ned til PC</>}
-            </button>
-
-            <button
-              disabled={saving}
-              onClick={() => handleSave(true)}
-              style={{
-                padding:"10px 0", borderRadius:4, border:"none",
-                cursor: saving ? "not-allowed" : "pointer",
-                background: saving ? M.gray1 : M.blue,
-                color: saving ? M.gray6 : M.white,
-                fontFamily:"inherit", fontSize:12, fontWeight:600,
-                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-              }}
-            >
-              {saving ? <><Icon.Spinner color={M.white}/> Laster opp…</> : <><Icon.Upload color={M.white}/> Last opp til TC-prosjektet</>}
-            </button>
-
-            <button
-              onClick={() => setPhase("edit")}
-              style={{ padding:"6px 0", borderRadius:4, border:`1px solid ${M.gray1}`, background:M.white, color:M.gray6, fontFamily:"inherit", fontSize:11, cursor:"pointer" }}
-            >
-              ← Endre verdier
-            </button>
-
-            {tcFolderId === "" && (
-              <div style={{ fontSize:10, color:M.gray6 }}>
-                Opplasting går til rotmappen. Fyll inn mappe-ID nedenfor for å velge mappe.
-              </div>
-            )}
-            <div>
-              <label style={{ fontSize:11, fontWeight:600, color:M.gray8, display:"block", marginBottom:4 }}>
-                Mappe-ID i TC <span style={{fontWeight:400,color:M.gray6}}>(valgfri)</span>
-              </label>
-              <input value={tcFolderId} onChange={e => setTcFolderId(e.target.value)}
-                placeholder="f.eks. d4WBP_i9g0s"
-                style={{ width:"100%", padding:"7px 10px", fontSize:12, borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"monospace", color:M.gray, background:M.white, outline:"none" }}
-                onFocus={e => e.target.style.borderColor = M.blue}
-                onBlur={e => e.target.style.borderColor = M.gray1}
-              />
-            </div>
-          </div>
         )}
 
         {/* Result */}
         {saveResult && (
           <div style={{ padding:"10px 12px", borderRadius:4, fontSize:12, border:`1px solid ${saveResult.success?M.green:M.red}`, background:saveResult.success?M.greenPale:M.redPale, color:saveResult.success?M.greenDark:M.redDark, lineHeight:1.6 }}>
             {saveResult.success
-              ? saveResult.uploadedToTC
-                ? <><strong>✓ Lastet opp til TC!</strong><br/>{saveResult.count} objekter oppdatert.</>
-                : <>✓ Korrigert IFC lastet ned – {saveResult.count} objekter oppdatert</>
+              ? <>✓ Korrigert IFC lastet ned – {saveResult.count} objekter oppdatert</>
               : `✕ ${saveResult.message}`
             }
             {saveResult.success && (
-              <button onClick={() => { setSaveResult(null); setPhase("edit"); }}
+              <button onClick={() => { setSaveResult(null); }}
                 style={{ display:"block", marginTop:8, fontSize:11, padding:"4px 10px", borderRadius:3, border:`1px solid ${M.green}`, background:M.white, color:M.greenDark, cursor:"pointer", fontFamily:"inherit" }}>
                 Gjør en ny endring
               </button>
@@ -1469,7 +1499,7 @@ function DownloadPage({ tc, onBack }) {
 export default function IDSChecker() {
   const [page, setPage] = useState("home");
   const [tc, setTc] = useState(null);
-  const { pyStatus, load: loadPyodide, validate: pyValidate } = usePyodide();
+  const { pyStatus, load: loadPyodide, validate: pyValidate, updateProperties: pyUpdateProperties } = usePyodide();
   const [devMode, setDevMode] = useState(false);
   const [loadedModels, setLoadedModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState(null);
@@ -1761,7 +1791,7 @@ export default function IDSChecker() {
       <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", background:M.grayLight, minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
         {globalStyle}
         {header}
-        <PropertyEditor spec={editingSpec} model={selectedModel} tc={tc} devMode={devMode} onBack={() => setEditingSpec(null)}/>
+        <PropertyEditor spec={editingSpec} model={selectedModel} tc={tc} devMode={devMode} onBack={() => setEditingSpec(null)} pyUpdateProperties={pyUpdateProperties}/>
       </div>
     );
   }
