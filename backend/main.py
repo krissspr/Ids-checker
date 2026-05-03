@@ -14,7 +14,11 @@ app = FastAPI(title="IDS Checker API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://ids-checker.vercel.app",
+        "https://*.vercel.app",
+        "null",  # TC extension iframe
+    ],
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
@@ -26,7 +30,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     print(f"UNHANDLED ERROR: {exc}\n{tb}", flush=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc), "traceback": tb},
+        content={"detail": str(exc)},  # Don't expose traceback to client
     )
 
 
@@ -236,7 +240,7 @@ async def project_members(
             f"{base_url}/projects/{tc_project_id}/members",
             headers=headers,
         )
-        print(f"Members: {res.status_code} {res.text[:300]}", flush=True)
+        print(f"Members: {res.status_code} ({len(members) if res.status_code == 200 else 'error'})", flush=True)
         if res.status_code == 200:
             data = res.json()
             members = data.get("list") or data.get("members") or (data if isinstance(data, list) else [])
@@ -363,7 +367,7 @@ async def create_todos(
                     },
                     "target": {"id": todo_id, "type": "TODO"},
                 }
-                print(f"  Objectlink request: {link_body}", flush=True)
+                print(f"  Objectlink request: {len(guids[:250])} objects", flush=True)
                 link_res = await client.post(
                     f"{base_url}/objectlink",
                     json=link_body,
