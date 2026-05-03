@@ -609,6 +609,13 @@ function PropertyEditor({ spec, model, tc, devMode, onBack, pyUpdateProperties }
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  const failedGuids = spec.failures.map(f => f.guid).filter(Boolean);
+  const anyFilled = requirements.some((_, i) => (values[i] || "").trim().length > 0);
+  const filledReqs = requirements
+    .map((req, i) => ({ req, value: (values[i] || "").trim(), data_type: datatypes[i] || "" }))
+    .filter(({ value }) => value.length > 0);
+  const isSaving = saving || uploading;
+
   const handleUploadToTC = async () => {
     if (!selectedFolder) { setShowFolderPicker(true); return; }
     setUploading(true);
@@ -631,11 +638,6 @@ function PropertyEditor({ spec, model, tc, devMode, onBack, pyUpdateProperties }
       log.end();
     }
   };
-
-  const isSaving = saving || uploading;
-  const filledReqs = requirements
-    .map((req, i) => ({ req, value: (values[i] || "").trim(), data_type: datatypes[i] || "" }))
-    .filter(({ value }) => value.length > 0);
 
   const handleSave = async () => {
     setSaving(true);
