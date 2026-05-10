@@ -1983,6 +1983,7 @@ export default function IDSChecker() {
         </div>
       </div>
       {devMode && <span style={{fontSize:10,background:M.yellow,color:M.gray,borderRadius:3,padding:"2px 6px",fontWeight:700}}>DEV</span>}
+      <button onClick={() => window.location.reload()} title="Oppdater app" style={{background:"none",border:"none",color:M.white,cursor:"pointer",fontSize:16,padding:"0 0 0 4px",opacity:0.7,lineHeight:1}}>↺</button>
     </div>
   );
 
