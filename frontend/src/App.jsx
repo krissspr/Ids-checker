@@ -1715,6 +1715,644 @@ function DownloadPage({ tc, onBack }) {
   );
 }
 
+// ── PropertyEditorPage ────────────────────────────────────────────────────────
+function PropertyEditorPage({ tc, devMode, loadPyodide, pyStatus, onBack }) {
+  const IFC_TYPES = ["IfcWall","IfcSlab","IfcBeam","IfcColumn","IfcDoor","IfcWindow","IfcRoof","IfcStair","IfcRamp","IfcBuildingElementProxy","IfcSpace","IfcZone","IfcFlowTerminal","IfcFlowSegment","IfcPipeSegment","IfcDuctSegment","IfcCableSegment","IfcAirTerminal","IfcValve","IfcPump","IfcFan","IfcCompressor"];
+  const DATA_TYPES = ["","IfcLabel","IfcText","IfcIdentifier","IfcReal","IfcInteger","IfcBoolean","IfcLengthMeasure","IfcAreaMeasure","IfcVolumeMeasure","IfcPositiveLengthMeasure","IfcMassMeasure","IfcPlaneAngleMeasure","IfcCountMeasure"];
+
+  function makeRule() {
+    return {
+      id: `r${Date.now()}${Math.random().toString(36).slice(2,5)}`,
+      filter: { entityType: "IfcWall", propPset: "", propName: "", propValue: "" },
+      properties: [{ pset: "", name: "", value: "", dataType: "" }],
+    };
+  }
+
+  // ── IFC source
+  const [ifcTab, setIfcTab] = useState("upload");
+  const [uploadedIfc, setUploadedIfc] = useState(null);
+  const [tcIfc, setTcIfc] = useState(null); // { name, bytes }
+  // TC IFC browser
+  const [tcIfcLoading, setTcIfcLoading] = useState(false);
+  const [tcIfcItems, setTcIfcItems] = useState([]);
+  const [tcIfcPath, setTcIfcPath] = useState([]);
+  const [tcIfcToken, setTcIfcToken] = useState(null);
+  const [tcIfcHost, setTcIfcHost] = useState(null);
+  const [tcIfcDownloading, setTcIfcDownloading] = useState(null);
+  const tcIfcInitDone = useRef(false);
+
+  // ── Rules
+  const [rules, setRules] = useState(() => [makeRule()]);
+  const [matchCounts, setMatchCounts] = useState({});
+  const [matchLoading, setMatchLoading] = useState({});
+
+  // ── Run
+  const [runStatus, setRunStatus] = useState("idle");
+  const [runLog, setRunLog] = useState([]);
+  const [resultBytes, setResultBytes] = useState(null);
+  const [resultName, setResultName] = useState(null);
+
+  // ── TC result upload
+  const [showResultFolderPicker, setShowResultFolderPicker] = useState(false);
+  const [tcUploadState, setTcUploadState] = useState("idle");
+
+  // ── CSV
+  const [showCsvSavePicker, setShowCsvSavePicker] = useState(false);
+  const [csvSaveState, setCsvSaveState] = useState("idle");
+  const [showCsvLoadFolderPicker, setShowCsvLoadFolderPicker] = useState(false);
+  const [csvLoadFolder, setCsvLoadFolder] = useState(null);
+  const [csvLoadItems, setCsvLoadItems] = useState(null);
+  const [csvLoadLoading, setCsvLoadLoading] = useState(false);
+  const [csvImportError, setCsvImportError] = useState(null);
+
+  const activeIfcFile = ifcTab === "upload" ? uploadedIfc : tcIfc;
+  const hasIfc = !!activeIfcFile;
+
+  // ── TC IFC browser
+  const tcIfcLoadFolder = async (folderId, folderName, tok, ho) => {
+    setTcIfcLoading(true);
+    try {
+      const t = tok || tcIfcToken;
+      const h = ho || tcIfcHost;
+      const res = await fetch(
+        `https://${h}/tc/api/2.1/folders/${folderId}/items?tokenThumburl=false&sort=+name`,
+        { headers: { Authorization: `Bearer ${t}` } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setTcIfcItems(data.list || data.items || []);
+        if (folderName) setTcIfcPath(p => [...p, { id: folderId, name: folderName }]);
+      }
+    } finally { setTcIfcLoading(false); }
+  };
+
+  const tcIfcInit = async () => {
+    if (tcIfcInitDone.current) return;
+    tcIfcInitDone.current = true;
+    setTcIfcLoading(true);
+    try {
+      const t = tc.getAccessToken();
+      const project = await tc.api.project.getCurrentProject();
+      const h = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+      setTcIfcToken(t);
+      setTcIfcHost(h);
+      const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
+      if (loadedModels?.length > 0) {
+        const fileId = loadedModels[0].id;
+        const fileRes = await fetch(
+          `https://${h}/tc/api/2.1/projects/${project.id}/${fileId}/versions`,
+          { headers: { Authorization: `Bearer ${t}` } }
+        );
+        if (fileRes.ok) {
+          const d = await fileRes.json();
+          const parentId = d.items?.[0]?.parentId;
+          const parentName = d.items?.[0]?.path?.[d.items[0].path.length - 1]?.name || "Prosjektmappe";
+          if (parentId) { await tcIfcLoadFolder(parentId, parentName, t, h); return; }
+        }
+      }
+    } finally { setTcIfcLoading(false); }
+  };
+
+  const tcIfcLoadFile = async (item) => {
+    setTcIfcDownloading(item.id);
+    try {
+      const project = await tc.api.project.getCurrentProject();
+      const h = tcIfcHost;
+      const urlRes = await fetch(
+        `https://${h}/tc/api/2.0/files/fs/${item.id}/downloadurl`,
+        { headers: { Authorization: `Bearer ${tcIfcToken}` } }
+      );
+      if (urlRes.ok) {
+        const { url } = await urlRes.json();
+        const fileRes = await fetch(url);
+        const bytes = new Uint8Array(await fileRes.arrayBuffer());
+        setTcIfc({ name: item.name, bytes });
+      }
+    } finally { setTcIfcDownloading(null); }
+  };
+
+  // ── CSV helpers
+  function serializeCSV(rulesList) {
+    const header = ["RuleId","FilterEntityType","FilterPropPset","FilterPropName","FilterPropValue","PropPset","PropName","PropValue","PropDataType"];
+    const rows = [header];
+    for (const rule of rulesList) {
+      for (const prop of rule.properties) {
+        rows.push([rule.id, rule.filter.entityType, rule.filter.propPset, rule.filter.propName, rule.filter.propValue, prop.pset, prop.name, prop.value, prop.dataType]);
+      }
+    }
+    return rows.map(r => r.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  }
+
+  function deserializeCSV(text) {
+    const parseRow = (line) => {
+      const res = []; let field = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { if (inQ && line[i+1] === '"') { field += '"'; i++; } else inQ = !inQ; }
+        else if (c === ',' && !inQ) { res.push(field); field = ""; }
+        else field += c;
+      }
+      res.push(field); return res;
+    };
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return null;
+    const headers = parseRow(lines[0]);
+    const rows = lines.slice(1).map(l => Object.fromEntries(headers.map((h, i) => [h, parseRow(l)[i] ?? ""])));
+    const map = new Map();
+    for (const r of rows) {
+      if (!map.has(r.RuleId)) {
+        map.set(r.RuleId, {
+          id: r.RuleId || `r${Date.now()}${Math.random().toString(36).slice(2,5)}`,
+          filter: { entityType: r.FilterEntityType || "IfcWall", propPset: r.FilterPropPset || "", propName: r.FilterPropName || "", propValue: r.FilterPropValue || "" },
+          properties: [],
+        });
+      }
+      const rule = map.get(r.RuleId);
+      if (r.PropName) rule.properties.push({ pset: r.PropPset || "", name: r.PropName || "", value: r.PropValue || "", dataType: r.PropDataType || "" });
+    }
+    const result = Array.from(map.values());
+    result.forEach(r => { if (!r.properties.length) r.properties.push({ pset:"", name:"", value:"", dataType:"" }); });
+    return result;
+  }
+
+  const saveCsvToPc = () => {
+    const blob = new Blob([serializeCSV(rules)], { type: "text/csv" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "property_rules.csv"; a.click();
+  };
+
+  const loadCsvFromPc = (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = deserializeCSV(ev.target.result);
+      if (result) { setRules(result); setCsvImportError(null); } else setCsvImportError("Ugyldig CSV-format");
+    };
+    reader.readAsText(f);
+    e.target.value = "";
+  };
+
+  const saveCsvToTc = async (folder) => {
+    setShowCsvSavePicker(false); setCsvSaveState("uploading");
+    try {
+      await uploadFileToTC(tc, new TextEncoder().encode(serializeCSV(rules)), "property_rules.csv", folder.id);
+      setCsvSaveState("done");
+    } catch (e) { log.error("CSV TC save:", e.message); setCsvSaveState("error"); }
+  };
+
+  const loadCsvFolderSelected = async (folder) => {
+    setShowCsvLoadFolderPicker(false); setCsvLoadFolder(folder); setCsvLoadLoading(true);
+    try {
+      const t = tc.getAccessToken();
+      const project = await tc.api.project.getCurrentProject();
+      const h = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+      const res = await fetch(`https://${h}/tc/api/2.1/folders/${folder.id}/items?tokenThumburl=false&sort=+name`, { headers: { Authorization: `Bearer ${t}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setCsvLoadItems((data.list || data.items || []).filter(i => i.type !== "FOLDER" && i.name?.toLowerCase().endsWith(".csv")));
+      }
+    } finally { setCsvLoadLoading(false); }
+  };
+
+  const loadCsvFileFromTc = async (item) => {
+    try {
+      const t = tc.getAccessToken();
+      const project = await tc.api.project.getCurrentProject();
+      const h = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+      const urlRes = await fetch(`https://${h}/tc/api/2.0/files/fs/${item.id}/downloadurl`, { headers: { Authorization: `Bearer ${t}` } });
+      if (urlRes.ok) {
+        const { url } = await urlRes.json();
+        const text = await (await fetch(url)).text();
+        const result = deserializeCSV(text);
+        if (result) { setRules(result); setCsvLoadItems(null); setCsvLoadFolder(null); setCsvImportError(null); }
+        else setCsvImportError("Ugyldig CSV-format");
+      }
+    } catch (e) { setCsvImportError(e.message); }
+  };
+
+  // ── Sjekk treff
+  const checkMatches = async (rule) => {
+    if (!hasIfc) return;
+    setMatchLoading(m => ({ ...m, [rule.id]: true }));
+    try {
+      const py = await loadPyodide();
+      let bytes;
+      if (ifcTab === "upload" && uploadedIfc) bytes = new Uint8Array(await uploadedIfc.arrayBuffer());
+      else if (tcIfc) bytes = tcIfc.bytes;
+      if (!bytes) return;
+      py.FS.writeFile("/model.ifc", bytes);
+      py.globals.set("check_rule_json", JSON.stringify(rule));
+      const count = await py.runPythonAsync(`
+import json, ifcopenshell, ifcopenshell.util.element
+rule = json.loads(check_rule_json)
+filt = rule.get("filter", {})
+entity_type = filt.get("entityType","")
+pf_pset = filt.get("propPset","")
+pf_name = filt.get("propName","")
+pf_value = filt.get("propValue","")
+model = ifcopenshell.open("/model.ifc")
+try:
+    entities = model.by_type(entity_type) if entity_type else []
+except Exception:
+    entities = []
+if pf_name:
+    filtered = []
+    for ent in entities:
+        psets = ifcopenshell.util.element.get_psets(ent)
+        found_val = None
+        if pf_pset:
+            found_val = psets.get(pf_pset, {}).get(pf_name)
+        else:
+            for pd in psets.values():
+                if pf_name in pd:
+                    found_val = pd[pf_name]
+                    break
+        if pf_value:
+            if str(found_val) == pf_value:
+                filtered.append(ent)
+        elif found_val is not None:
+            filtered.append(ent)
+    entities = filtered
+str(len(entities))
+`);
+      setMatchCounts(m => ({ ...m, [rule.id]: parseInt(count) || 0 }));
+    } catch (e) {
+      log.error("checkMatches:", e.message);
+      setMatchCounts(m => ({ ...m, [rule.id]: -1 }));
+    } finally {
+      setMatchLoading(m => ({ ...m, [rule.id]: false }));
+    }
+  };
+
+  // ── Kjør alle regler
+  const runAllRules = async () => {
+    if (!hasIfc) return;
+    setRunStatus("running"); setRunLog([]); setResultBytes(null);
+    try {
+      setRunLog(l => [...l, "Laster Python-miljø…"]);
+      const py = await loadPyodide();
+      let bytes;
+      if (ifcTab === "upload" && uploadedIfc) bytes = new Uint8Array(await uploadedIfc.arrayBuffer());
+      else bytes = tcIfc.bytes;
+      setRunLog(l => [...l, "Skriver IFC til filsystem…"]);
+      py.FS.writeFile("/model.ifc", bytes);
+      py.globals.set("pe_rules_json", JSON.stringify(rules));
+      setRunLog(l => [...l, "Kjører regler…"]);
+      const resultJson = await py.runPythonAsync(`
+import json, ifcopenshell, ifcopenshell.api, ifcopenshell.util.element
+rules_list = json.loads(pe_rules_json)
+model = ifcopenshell.open("/model.ifc")
+try:
+    schema_obj = ifcopenshell.ifcopenshell_wrapper.schema_by_name(model.schema_identifier)
+except Exception:
+    schema_obj = None
+
+def cast_value(value, data_type):
+    if not data_type or not value:
+        return value
+    dt = data_type.strip()
+    if schema_obj:
+        try:
+            ifc_type = schema_obj.declaration_by_name(dt)
+            if ifc_type:
+                return ifc_type(value)
+        except Exception:
+            pass
+    if dt in ("IfcReal","IfcLengthMeasure","IfcAreaMeasure","IfcVolumeMeasure","IfcMassMeasure","IfcPositiveLengthMeasure","IfcPlaneAngleMeasure"):
+        return float(value)
+    if dt in ("IfcInteger","IfcCountMeasure"):
+        return int(value)
+    if dt == "IfcBoolean":
+        return value.lower() in ("true","1","ja","yes")
+    return value
+
+results = []
+for rule in rules_list:
+    filt = rule.get("filter", {})
+    entity_type = filt.get("entityType","")
+    pf_pset = filt.get("propPset","")
+    pf_name = filt.get("propName","")
+    pf_value = filt.get("propValue","")
+    props_to_set = rule.get("properties", [])
+    try:
+        entities = model.by_type(entity_type) if entity_type else []
+    except Exception:
+        entities = []
+    if pf_name:
+        filtered = []
+        for ent in entities:
+            psets = ifcopenshell.util.element.get_psets(ent)
+            found_val = None
+            if pf_pset:
+                found_val = psets.get(pf_pset, {}).get(pf_name)
+            else:
+                for pd in psets.values():
+                    if pf_name in pd:
+                        found_val = pd[pf_name]
+                        break
+            if pf_value:
+                if str(found_val) == pf_value:
+                    filtered.append(ent)
+            elif found_val is not None:
+                filtered.append(ent)
+        entities = filtered
+    updated_count = 0
+    for ent in entities:
+        for prop in props_to_set:
+            pset_name = prop.get("pset","")
+            prop_name = prop.get("name","")
+            prop_value = prop.get("value","")
+            data_type = prop.get("dataType","")
+            if not pset_name or not prop_name or prop_value == "":
+                continue
+            try:
+                typed_val = cast_value(str(prop_value), data_type)
+            except Exception:
+                typed_val = str(prop_value)
+            psets_data = ifcopenshell.util.element.get_psets(ent)
+            if pset_name in psets_data:
+                pset_obj = model.by_id(psets_data[pset_name]["id"])
+                ifcopenshell.api.run("pset.edit_pset", model, pset=pset_obj, properties={prop_name: typed_val})
+            else:
+                pset_obj = ifcopenshell.api.run("pset.add_pset", model, product=ent, name=pset_name)
+                ifcopenshell.api.run("pset.edit_pset", model, pset=pset_obj, properties={prop_name: typed_val})
+        updated_count += 1
+    results.append({"ruleId": rule.get("id",""), "entityType": entity_type, "count": updated_count})
+model.write("/pe_output.ifc")
+json.dumps({"rules": results, "total": sum(r["count"] for r in results)})
+`);
+      const data = JSON.parse(resultJson);
+      setRunLog(l => [...l, `Ferdig! ${data.total} objekter oppdatert.`]);
+      data.rules.forEach(r => setRunLog(l => [...l, `  ${r.entityType}: ${r.count} objekter`]));
+      const outBytes = py.FS.readFile("/pe_output.ifc");
+      const baseName = (activeIfcFile?.name || "model").replace(/\.ifc$/i, "");
+      setResultBytes(outBytes);
+      setResultName(`${baseName}_korrigert.ifc`);
+      setRunStatus("done");
+    } catch (e) {
+      setRunLog(l => [...l, `Feil: ${e.message}`]);
+      setRunStatus("error");
+    }
+  };
+
+  const downloadResult = () => {
+    const blob = new Blob([resultBytes], { type: "application/octet-stream" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = resultName; a.click();
+  };
+
+  const uploadResultToTc = async (folder) => {
+    setShowResultFolderPicker(false); setTcUploadState("uploading");
+    try {
+      await uploadFileToTC(tc, resultBytes, resultName, folder.id);
+      setTcUploadState("done");
+    } catch (e) { log.error("TC upload:", e.message); setTcUploadState("error"); }
+  };
+
+  const sectionLabel = (text) => (
+    <div style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>{text}</div>
+  );
+
+  const btnStyle = (color, outline) => ({
+    fontSize:11, padding:"6px 12px", borderRadius:4,
+    border:`1px solid ${color}`, background: outline ? M.white : color,
+    color: outline ? color : M.white,
+    cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:5,
+  });
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, background:M.grayLight }}>
+
+      {/* A: Header */}
+      <div style={{ background:M.blueDark, padding:"10px 14px", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+        <button onClick={onBack} style={{ background:"none", border:"none", color:M.white, cursor:"pointer", fontSize:18, padding:0, opacity:0.8, lineHeight:1 }}>←</button>
+        <div style={{ color:M.white, fontWeight:700, fontSize:13 }}>Property Editor</div>
+      </div>
+
+      <div style={{ flex:1, overflow:"auto", padding:14, display:"flex", flexDirection:"column", gap:14 }}>
+
+        {/* B: IFC-kilde */}
+        <section>
+          {sectionLabel("IFC-kilde")}
+          <TabBar
+            value={ifcTab}
+            onChange={v => { setIfcTab(v); if (v === "tc" && tc) tcIfcInit(); }}
+            options={[["upload","Last opp fra PC"],["tc","Hent fra TC"]]}
+          />
+          {ifcTab === "upload" ? (
+            <UploadZone file={uploadedIfc} onFile={setUploadedIfc} accept=".ifc" label=".ifc-fil"/>
+          ) : !tc ? (
+            <div style={{ fontSize:11, color:M.gray6, padding:12, background:M.white, borderRadius:4, border:`1px solid ${M.gray0}` }}>Ikke tilkoblet Trimble Connect</div>
+          ) : (
+            <div style={{ background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, display:"flex", flexDirection:"column", maxHeight:260, overflow:"hidden" }}>
+              {tcIfc && (
+                <div style={{ padding:"5px 10px", background:M.greenPale, borderBottom:`1px solid ${M.green}40`, fontSize:11, color:M.greenDark, display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                  <Icon.File color={M.green}/> {tcIfc.name} — lastet
+                </div>
+              )}
+              <div style={{ padding:"4px 10px", fontSize:10, color:M.gray6, borderBottom:`1px solid ${M.gray0}`, display:"flex", gap:4, flexWrap:"wrap", flexShrink:0 }}>
+                {tcIfcPath.length === 0 ? <span style={{ color:M.gray3 }}>Rot</span> : tcIfcPath.map((p, i) => (
+                  <span key={p.id} style={{ display:"flex", alignItems:"center", gap:4 }}>
+                    {i > 0 && <span>/</span>}
+                    <span style={{ cursor:"pointer", color:M.blue }} onClick={() => {
+                      setTcIfcPath(tcIfcPath.slice(0, i + 1).slice(0, -1));
+                      tcIfcLoadFolder(p.id, null, null, null);
+                    }}>{p.name}</span>
+                  </span>
+                ))}
+              </div>
+              <div style={{ flex:1, overflowY:"auto", padding:"4px 6px" }}>
+                {tcIfcLoading ? (
+                  <div style={{ padding:12, display:"flex", gap:8, alignItems:"center", fontSize:11, color:M.gray6 }}><Icon.Spinner/> Laster…</div>
+                ) : tcIfcItems.length === 0 ? (
+                  <div style={{ padding:12, fontSize:11, color:M.gray6 }}>Ingen filer</div>
+                ) : tcIfcItems.map(item => {
+                  const isFolder = item.type === "FOLDER";
+                  const isIfc = !isFolder && item.name?.toLowerCase().endsWith(".ifc");
+                  return (
+                    <div key={item.id}
+                      style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 6px", borderRadius:4, cursor:isFolder?"pointer":"default" }}
+                      onClick={() => isFolder && tcIfcLoadFolder(item.id, item.name, null, null)}
+                      onMouseEnter={e => { if (isFolder) e.currentTarget.style.background = M.bluePale; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <span style={{ fontSize:14, flexShrink:0 }}>{isFolder ? "📁" : "📄"}</span>
+                      <div style={{ flex:1, fontSize:11, color:M.gray, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.name}</div>
+                      {isIfc && (
+                        <button
+                          onClick={e => { e.stopPropagation(); tcIfcLoadFile(item); }}
+                          disabled={tcIfcDownloading === item.id}
+                          style={{ padding:"3px 8px", borderRadius:3, border:`1px solid ${M.green}`, background:M.white, color:M.green, fontSize:10, fontWeight:600, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:4, flexShrink:0 }}
+                        >
+                          {tcIfcDownloading === item.id ? <><Icon.Spinner color={M.green}/> …</> : "Bruk"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* C: Regelbygger */}
+        <section>
+          {sectionLabel("Regelbygger")}
+          {rules.map((rule, rIdx) => (
+            <div key={rule.id} style={{ background:M.white, border:`1px solid ${M.gray0}`, borderRadius:6, marginBottom:10, overflow:"hidden" }}>
+              <div style={{ background:M.bluePale, padding:"6px 10px", display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:M.blue, flex:1 }}>Regel {rIdx + 1}</div>
+                {rules.length > 1 && (
+                  <button onClick={() => setRules(r => r.filter(x => x.id !== rule.id))}
+                    style={{ background:"none", border:"none", color:M.gray6, cursor:"pointer", fontSize:15, lineHeight:1, padding:"0 2px" }}>×</button>
+                )}
+              </div>
+              {/* Filter section */}
+              <div style={{ padding:"10px 10px 8px" }}>
+                <div style={{ fontSize:10, fontWeight:600, color:M.gray6, marginBottom:6 }}>Filtre</div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  <select value={rule.filter.entityType}
+                    onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, entityType:e.target.value}} : x))}
+                    style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 140px", minWidth:0 }}>
+                    {IFC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    {!IFC_TYPES.includes(rule.filter.entityType) && <option value={rule.filter.entityType}>{rule.filter.entityType}</option>}
+                  </select>
+                  <input placeholder="Pset-filter (valgfritt)" value={rule.filter.propPset}
+                    onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propPset:e.target.value}} : x))}
+                    style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 120px", minWidth:0 }}/>
+                  <input placeholder="Egenskap (valgfritt)" value={rule.filter.propName}
+                    onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propName:e.target.value}} : x))}
+                    style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 120px", minWidth:0 }}/>
+                  <input placeholder="Verdi (valgfritt)" value={rule.filter.propValue}
+                    onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propValue:e.target.value}} : x))}
+                    style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 100px", minWidth:0 }}/>
+                </div>
+                <div style={{ marginTop:6, display:"flex", alignItems:"center", gap:8 }}>
+                  <button onClick={() => checkMatches(rule)} disabled={!hasIfc || matchLoading[rule.id]}
+                    style={{ fontSize:10, padding:"3px 10px", borderRadius:3, border:`1px solid ${M.blue}`, background:M.white, color:M.blue, cursor:hasIfc?"pointer":"not-allowed", fontFamily:"inherit", display:"flex", alignItems:"center", gap:4 }}>
+                    {matchLoading[rule.id] ? <><Icon.Spinner color={M.blue}/> Sjekker…</> : "Sjekk treff"}
+                  </button>
+                  {matchCounts[rule.id] !== undefined && (
+                    <span style={{ fontSize:10, color:matchCounts[rule.id] > 0 ? M.green : M.gray6 }}>
+                      {matchCounts[rule.id] < 0 ? "Feil ved sjekk" : `${matchCounts[rule.id]} treff`}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Properties section */}
+              <div style={{ padding:"8px 10px 10px", borderTop:`1px solid ${M.gray0}` }}>
+                <div style={{ fontSize:10, fontWeight:600, color:M.gray6, marginBottom:6 }}>Egenskaper å sette</div>
+                {rule.properties.map((prop, pIdx) => (
+                  <div key={pIdx} style={{ display:"flex", gap:5, marginBottom:5, flexWrap:"wrap" }}>
+                    <input placeholder="Pset" value={prop.pset}
+                      onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, properties:x.properties.map((p,i)=>i===pIdx?{...p,pset:e.target.value}:p)} : x))}
+                      style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 100px", minWidth:0 }}/>
+                    <input placeholder="Navn" value={prop.name}
+                      onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, properties:x.properties.map((p,i)=>i===pIdx?{...p,name:e.target.value}:p)} : x))}
+                      style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 100px", minWidth:0 }}/>
+                    <input placeholder="Verdi" value={prop.value}
+                      onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, properties:x.properties.map((p,i)=>i===pIdx?{...p,value:e.target.value}:p)} : x))}
+                      style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 80px", minWidth:0 }}/>
+                    <select value={prop.dataType}
+                      onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, properties:x.properties.map((p,i)=>i===pIdx?{...p,dataType:e.target.value}:p)} : x))}
+                      style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 130px", minWidth:0 }}>
+                      {DATA_TYPES.map(t => <option key={t} value={t}>{t || "Datatype (valgfritt)"}</option>)}
+                    </select>
+                    {rule.properties.length > 1 && (
+                      <button onClick={() => setRules(r => r.map(x => x.id===rule.id ? {...x, properties:x.properties.filter((_,i)=>i!==pIdx)} : x))}
+                        style={{ background:"none", border:"none", color:M.gray6, cursor:"pointer", fontSize:15, padding:"0 4px", flexShrink:0, lineHeight:1 }}>×</button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={() => setRules(r => r.map(x => x.id===rule.id ? {...x, properties:[...x.properties,{pset:"",name:"",value:"",dataType:""}]} : x))}
+                  style={{ fontSize:10, padding:"3px 8px", borderRadius:3, border:`1px solid ${M.gray1}`, background:M.white, color:M.gray6, cursor:"pointer", fontFamily:"inherit" }}>
+                  + Egenskap
+                </button>
+              </div>
+            </div>
+          ))}
+          <button onClick={() => setRules(r => [...r, makeRule()])}
+            style={{ fontSize:11, padding:"6px 14px", borderRadius:4, border:`1px solid ${M.blue}`, background:M.white, color:M.blue, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>
+            + Legg til regel
+          </button>
+        </section>
+
+        {/* D: CSV import/eksport */}
+        <section>
+          {sectionLabel("CSV import/eksport")}
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            <button onClick={saveCsvToPc} style={btnStyle(M.blue, true)}>↓ Lagre til PC</button>
+            <label style={{ ...btnStyle(M.blue, true), cursor:"pointer" }}>
+              ↑ Laste fra PC
+              <input type="file" accept=".csv" style={{ display:"none" }} onChange={loadCsvFromPc}/>
+            </label>
+            {tc && <>
+              <button onClick={() => setShowCsvSavePicker(true)} style={btnStyle(M.blue, true)}>↑ Lagre til TC</button>
+              <button onClick={() => setShowCsvLoadFolderPicker(true)} style={btnStyle(M.blue, true)}>↓ Laste fra TC</button>
+            </>}
+          </div>
+          {csvSaveState === "done" && <div style={{ fontSize:10, color:M.green, marginTop:6 }}>✓ CSV lagret til TC</div>}
+          {csvSaveState === "error" && <div style={{ fontSize:10, color:M.red, marginTop:6 }}>Feil ved lagring til TC</div>}
+          {csvImportError && <div style={{ fontSize:10, color:M.red, marginTop:6 }}>{csvImportError}</div>}
+          {csvLoadFolder && csvLoadItems !== null && (
+            <div style={{ marginTop:8, background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, padding:10 }}>
+              <div style={{ fontSize:11, fontWeight:600, color:M.gray, marginBottom:6 }}>CSV-filer i {csvLoadFolder.name}:</div>
+              {csvLoadLoading ? (
+                <div style={{ display:"flex", gap:6, alignItems:"center", fontSize:11, color:M.gray6 }}><Icon.Spinner/> Laster…</div>
+              ) : csvLoadItems.length === 0 ? (
+                <div style={{ fontSize:11, color:M.gray6 }}>Ingen CSV-filer i denne mappen</div>
+              ) : csvLoadItems.map(item => (
+                <button key={item.id} onClick={() => loadCsvFileFromTc(item)}
+                  style={{ display:"block", width:"100%", textAlign:"left", padding:"5px 8px", marginBottom:4, borderRadius:3, border:`1px solid ${M.gray0}`, background:M.grayLight, cursor:"pointer", fontSize:11, color:M.gray, fontFamily:"inherit" }}>
+                  📄 {item.name}
+                </button>
+              ))}
+              <button onClick={() => { setCsvLoadFolder(null); setCsvLoadItems(null); }}
+                style={{ marginTop:4, fontSize:10, color:M.gray6, background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>Lukk</button>
+            </div>
+          )}
+        </section>
+
+        {/* E: Kjør alle regler */}
+        <section>
+          {sectionLabel("Kjør alle regler")}
+          {!hasIfc && <div style={{ fontSize:11, color:M.gray6, marginBottom:8 }}>Last inn en IFC-fil i IFC-kilde-seksjonen først.</div>}
+          <button onClick={runAllRules} disabled={!hasIfc || runStatus === "running"}
+            style={{ fontSize:12, padding:"8px 18px", borderRadius:4, border:"none", fontWeight:600, fontFamily:"inherit", display:"flex", alignItems:"center", gap:6,
+              background:(!hasIfc||runStatus==="running") ? M.gray1 : M.blue,
+              color:(!hasIfc||runStatus==="running") ? M.gray6 : M.white,
+              cursor:(!hasIfc||runStatus==="running") ? "not-allowed" : "pointer" }}>
+            {runStatus === "running" ? <><Icon.Spinner color={M.white}/> Kjører…</> : "▶ Kjør alle regler"}
+          </button>
+          {runLog.length > 0 && (
+            <div style={{ marginTop:8, background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, padding:"8px 10px", fontSize:11, lineHeight:1.7, fontFamily:"monospace",
+              color: runStatus === "error" ? M.red : M.gray }}>
+              {runLog.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          )}
+          {runStatus === "done" && resultBytes && (
+            <div style={{ marginTop:8, display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button onClick={downloadResult} style={btnStyle(M.green, true)}>↓ Last ned til PC</button>
+              {tc && (
+                <button onClick={() => { if (tcUploadState !== "done") setShowResultFolderPicker(true); }}
+                  disabled={tcUploadState === "uploading"}
+                  style={btnStyle(M.blue, true)}>
+                  {tcUploadState === "uploading" ? <><Icon.Spinner color={M.blue}/> Laster opp…</> :
+                   tcUploadState === "done" ? "✓ Lastet opp til TC" : "↑ Last opp til TC"}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+
+      </div>
+
+      {showResultFolderPicker && <FolderPicker tc={tc} onSelect={uploadResultToTc} onClose={() => setShowResultFolderPicker(false)}/>}
+      {showCsvSavePicker && <FolderPicker tc={tc} onSelect={saveCsvToTc} onClose={() => setShowCsvSavePicker(false)}/>}
+      {showCsvLoadFolderPicker && <FolderPicker tc={tc} onSelect={loadCsvFolderSelected} onClose={() => setShowCsvLoadFolderPicker(false)}/>}
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function IDSChecker() {
   const [page, setPage] = useState("home");
@@ -2003,6 +2641,21 @@ export default function IDSChecker() {
       <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
         {globalStyle}
         <DownloadPage tc={tc} onBack={() => setPage("home")}/>
+      </div>
+    );
+  }
+
+  if (page === "props") {
+    return (
+      <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
+        {globalStyle}
+        <PropertyEditorPage
+          tc={tc}
+          devMode={devMode}
+          loadPyodide={loadPyodide}
+          pyStatus={pyStatus}
+          onBack={() => setPage("home")}
+        />
       </div>
     );
   }
