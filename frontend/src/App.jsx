@@ -1717,13 +1717,12 @@ function DownloadPage({ tc, onBack }) {
 
 // ── PropertyEditorPage ────────────────────────────────────────────────────────
 function PropertyEditorPage({ tc, devMode, loadPyodide, pyStatus, onBack }) {
-  const IFC_TYPES = ["IfcWall","IfcSlab","IfcBeam","IfcColumn","IfcDoor","IfcWindow","IfcRoof","IfcStair","IfcRamp","IfcBuildingElementProxy","IfcSpace","IfcZone","IfcFlowTerminal","IfcFlowSegment","IfcPipeSegment","IfcDuctSegment","IfcCableSegment","IfcAirTerminal","IfcValve","IfcPump","IfcFan","IfcCompressor"];
-  const DATA_TYPES = ["","IfcLabel","IfcText","IfcIdentifier","IfcReal","IfcInteger","IfcBoolean","IfcLengthMeasure","IfcAreaMeasure","IfcVolumeMeasure","IfcPositiveLengthMeasure","IfcMassMeasure","IfcPlaneAngleMeasure","IfcCountMeasure"];
+  const DATA_TYPES =["","IfcLabel","IfcText","IfcIdentifier","IfcReal","IfcInteger","IfcBoolean","IfcLengthMeasure","IfcAreaMeasure","IfcVolumeMeasure","IfcPositiveLengthMeasure","IfcMassMeasure","IfcPlaneAngleMeasure","IfcCountMeasure"];
 
   function makeRule() {
     return {
       id: `r${Date.now()}${Math.random().toString(36).slice(2,5)}`,
-      filter: { entityType: "IfcWall", propPset: "", propName: "", propValue: "" },
+      filter: { mode: "type", typeValue: "IfcWall", nameValue: "", propPset: "", propName: "", propValue: "" },
       properties: [{ pset: "", name: "", value: "", dataType: "" }],
     };
   }
@@ -1833,11 +1832,11 @@ function PropertyEditorPage({ tc, devMode, loadPyodide, pyStatus, onBack }) {
 
   // ── CSV helpers
   function serializeCSV(rulesList) {
-    const header = ["RuleId","FilterEntityType","FilterPropPset","FilterPropName","FilterPropValue","PropPset","PropName","PropValue","PropDataType"];
+    const header = ["RuleId","FilterMode","FilterTypeValue","FilterNameValue","FilterPropPset","FilterPropName","FilterPropValue","PropPset","PropName","PropValue","PropDataType"];
     const rows = [header];
     for (const rule of rulesList) {
       for (const prop of rule.properties) {
-        rows.push([rule.id, rule.filter.entityType, rule.filter.propPset, rule.filter.propName, rule.filter.propValue, prop.pset, prop.name, prop.value, prop.dataType]);
+        rows.push([rule.id, rule.filter.mode, rule.filter.typeValue, rule.filter.nameValue, rule.filter.propPset, rule.filter.propName, rule.filter.propValue, prop.pset, prop.name, prop.value, prop.dataType]);
       }
     }
     return rows.map(r => r.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -1863,7 +1862,7 @@ function PropertyEditorPage({ tc, devMode, loadPyodide, pyStatus, onBack }) {
       if (!map.has(r.RuleId)) {
         map.set(r.RuleId, {
           id: r.RuleId || `r${Date.now()}${Math.random().toString(36).slice(2,5)}`,
-          filter: { entityType: r.FilterEntityType || "IfcWall", propPset: r.FilterPropPset || "", propName: r.FilterPropName || "", propValue: r.FilterPropValue || "" },
+          filter: { mode: r.FilterMode || "type", typeValue: r.FilterTypeValue || "IfcWall", nameValue: r.FilterNameValue || "", propPset: r.FilterPropPset || "", propName: r.FilterPropName || "", propValue: r.FilterPropValue || "" },
           properties: [],
         });
       }
@@ -1945,15 +1944,21 @@ function PropertyEditorPage({ tc, devMode, loadPyodide, pyStatus, onBack }) {
 import json, ifcopenshell, ifcopenshell.util.element
 rule = json.loads(check_rule_json)
 filt = rule.get("filter", {})
-entity_type = filt.get("entityType","")
+filt_mode = filt.get("mode","type")
+type_value = filt.get("typeValue","")
+name_value = filt.get("nameValue","")
 pf_pset = filt.get("propPset","")
 pf_name = filt.get("propName","")
 pf_value = filt.get("propValue","")
 model = ifcopenshell.open("/model.ifc")
-try:
-    entities = model.by_type(entity_type) if entity_type else []
-except Exception:
-    entities = []
+if filt_mode == "type":
+    try:
+        entities = model.by_type(type_value) if type_value else []
+    except Exception:
+        entities = []
+else:
+    nv = name_value.lower()
+    entities = [e for e in model if nv and nv in (getattr(e, "Name", "") or "").lower()] if nv else []
 if pf_name:
     filtered = []
     for ent in entities:
@@ -2028,15 +2033,21 @@ def cast_value(value, data_type):
 results = []
 for rule in rules_list:
     filt = rule.get("filter", {})
-    entity_type = filt.get("entityType","")
+    filt_mode = filt.get("mode","type")
+    type_value = filt.get("typeValue","")
+    name_value = filt.get("nameValue","")
     pf_pset = filt.get("propPset","")
     pf_name = filt.get("propName","")
     pf_value = filt.get("propValue","")
     props_to_set = rule.get("properties", [])
-    try:
-        entities = model.by_type(entity_type) if entity_type else []
-    except Exception:
-        entities = []
+    if filt_mode == "type":
+        try:
+            entities = model.by_type(type_value) if type_value else []
+        except Exception:
+            entities = []
+    else:
+        nv = name_value.lower()
+        entities = [e for e in model if nv and nv in (getattr(e, "Name", "") or "").lower()] if nv else []
     if pf_name:
         filtered = []
         for ent in entities:
@@ -2076,13 +2087,14 @@ for rule in rules_list:
                 pset_obj = ifcopenshell.api.run("pset.add_pset", model, product=ent, name=pset_name)
                 ifcopenshell.api.run("pset.edit_pset", model, pset=pset_obj, properties={prop_name: typed_val})
         updated_count += 1
-    results.append({"ruleId": rule.get("id",""), "entityType": entity_type, "count": updated_count})
+    label = type_value if filt_mode == "type" else f"Navn:{name_value}"
+    results.append({"ruleId": rule.get("id",""), "label": label, "count": updated_count})
 model.write("/pe_output.ifc")
 json.dumps({"rules": results, "total": sum(r["count"] for r in results)})
 `);
       const data = JSON.parse(resultJson);
       setRunLog(l => [...l, `Ferdig! ${data.total} objekter oppdatert.`]);
-      data.rules.forEach(r => setRunLog(l => [...l, `  ${r.entityType}: ${r.count} objekter`]));
+      data.rules.forEach(r => setRunLog(l => [...l, `  ${r.label}: ${r.count} objekter`]));
       const outBytes = py.FS.readFile("/pe_output.ifc");
       const baseName = (activeIfcFile?.name || "model").replace(/\.ifc$/i, "");
       setResultBytes(outBytes);
@@ -2209,12 +2221,26 @@ json.dumps({"rules": results, "total": sum(r["count"] for r in results)})
               <div style={{ padding:"10px 10px 8px" }}>
                 <div style={{ fontSize:10, fontWeight:600, color:M.gray6, marginBottom:6 }}>Filtre</div>
                 <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                  <select value={rule.filter.entityType}
-                    onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, entityType:e.target.value}} : x))}
-                    style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 140px", minWidth:0 }}>
-                    {IFC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    {!IFC_TYPES.includes(rule.filter.entityType) && <option value={rule.filter.entityType}>{rule.filter.entityType}</option>}
-                  </select>
+                  {/* Mode toggle */}
+                  <div style={{ display:"flex", borderRadius:3, border:`1px solid ${M.gray1}`, overflow:"hidden", flexShrink:0 }}>
+                    {[["type","IFC-type"],["name","Navn"]].map(([val, label]) => (
+                      <button key={val} onClick={() => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, mode:val}} : x))}
+                        style={{ fontSize:10, padding:"4px 9px", border:"none", fontFamily:"inherit", cursor:"pointer", fontWeight:600,
+                          background: rule.filter.mode===val ? M.blue : M.white,
+                          color: rule.filter.mode===val ? M.white : M.gray6 }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {rule.filter.mode === "type" ? (
+                    <input placeholder="f.eks. IfcWall" value={rule.filter.typeValue}
+                      onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, typeValue:e.target.value}} : x))}
+                      style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 140px", minWidth:0 }}/>
+                  ) : (
+                    <input placeholder="Navn inneholder…" value={rule.filter.nameValue}
+                      onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, nameValue:e.target.value}} : x))}
+                      style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 140px", minWidth:0 }}/>
+                  )}
                   <input placeholder="Pset-filter (valgfritt)" value={rule.filter.propPset}
                     onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propPset:e.target.value}} : x))}
                     style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 120px", minWidth:0 }}/>
