@@ -1956,10 +1956,26 @@ if filt_mode == "type":
         entities = model.by_type(type_value) if type_value else []
     except Exception:
         entities = []
+elif filt_mode == "property":
+    entities = list(model) if pf_pset else []
 else:
     nv = name_value.lower()
     entities = [e for e in model if nv and nv in (getattr(e, "Name", "") or "").lower()] if nv else []
-if pf_name:
+if filt_mode == "property" and pf_pset:
+    filtered = []
+    for ent in entities:
+        psets = ifcopenshell.util.element.get_psets(ent)
+        if pf_pset not in psets:
+            continue
+        if pf_name:
+            found_val = psets[pf_pset].get(pf_name)
+            if found_val is None:
+                continue
+            if pf_value and str(found_val) != pf_value:
+                continue
+        filtered.append(ent)
+    entities = filtered
+elif pf_name:
     filtered = []
     for ent in entities:
         psets = ifcopenshell.util.element.get_psets(ent)
@@ -2045,10 +2061,26 @@ for rule in rules_list:
             entities = model.by_type(type_value) if type_value else []
         except Exception:
             entities = []
+    elif filt_mode == "property":
+        entities = list(model) if pf_pset else []
     else:
         nv = name_value.lower()
         entities = [e for e in model if nv and nv in (getattr(e, "Name", "") or "").lower()] if nv else []
-    if pf_name:
+    if filt_mode == "property" and pf_pset:
+        filtered = []
+        for ent in entities:
+            psets = ifcopenshell.util.element.get_psets(ent)
+            if pf_pset not in psets:
+                continue
+            if pf_name:
+                found_val = psets[pf_pset].get(pf_name)
+                if found_val is None:
+                    continue
+                if pf_value and str(found_val) != pf_value:
+                    continue
+            filtered.append(ent)
+        entities = filtered
+    elif pf_name:
         filtered = []
         for ent in entities:
             psets = ifcopenshell.util.element.get_psets(ent)
@@ -2087,7 +2119,12 @@ for rule in rules_list:
                 pset_obj = ifcopenshell.api.run("pset.add_pset", model, product=ent, name=pset_name)
                 ifcopenshell.api.run("pset.edit_pset", model, pset=pset_obj, properties={prop_name: typed_val})
         updated_count += 1
-    label = type_value if filt_mode == "type" else f"Navn:{name_value}"
+    if filt_mode == "type":
+        label = type_value
+    elif filt_mode == "name":
+        label = f"Navn:{name_value}"
+    else:
+        label = f"Pset:{pf_pset}" + (f".{pf_name}" if pf_name else "")
     results.append({"ruleId": rule.get("id",""), "label": label, "count": updated_count})
 model.write("/pe_output.ifc")
 json.dumps({"rules": results, "total": sum(r["count"] for r in results)})
@@ -2223,7 +2260,7 @@ json.dumps({"rules": results, "total": sum(r["count"] for r in results)})
                 <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                   {/* Mode toggle */}
                   <div style={{ display:"flex", borderRadius:3, border:`1px solid ${M.gray1}`, overflow:"hidden", flexShrink:0 }}>
-                    {[["type","IFC-type"],["name","Navn"]].map(([val, label]) => (
+                    {[["type","IFC-type"],["name","Navn"],["property","Egenskap"]].map(([val, label]) => (
                       <button key={val} onClick={() => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, mode:val}} : x))}
                         style={{ fontSize:10, padding:"4px 9px", border:"none", fontFamily:"inherit", cursor:"pointer", fontWeight:600,
                           background: rule.filter.mode===val ? M.blue : M.white,
@@ -2236,20 +2273,34 @@ json.dumps({"rules": results, "total": sum(r["count"] for r in results)})
                     <input placeholder="f.eks. IfcWall" value={rule.filter.typeValue}
                       onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, typeValue:e.target.value}} : x))}
                       style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 140px", minWidth:0 }}/>
-                  ) : (
+                  ) : rule.filter.mode === "name" ? (
                     <input placeholder="Navn inneholder…" value={rule.filter.nameValue}
                       onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, nameValue:e.target.value}} : x))}
                       style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 140px", minWidth:0 }}/>
+                  ) : (
+                    <>
+                      <input placeholder="Egenskapssett" value={rule.filter.propPset}
+                        onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propPset:e.target.value}} : x))}
+                        style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 140px", minWidth:0 }}/>
+                      <input placeholder="Egenskap (valgfritt)" value={rule.filter.propName}
+                        onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propName:e.target.value}} : x))}
+                        style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 120px", minWidth:0 }}/>
+                      <input placeholder="Verdi (valgfritt)" value={rule.filter.propValue}
+                        onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propValue:e.target.value}} : x))}
+                        style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 100px", minWidth:0 }}/>
+                    </>
                   )}
-                  <input placeholder="Pset-filter (valgfritt)" value={rule.filter.propPset}
-                    onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propPset:e.target.value}} : x))}
-                    style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 120px", minWidth:0 }}/>
-                  <input placeholder="Egenskap (valgfritt)" value={rule.filter.propName}
-                    onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propName:e.target.value}} : x))}
-                    style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 120px", minWidth:0 }}/>
-                  <input placeholder="Verdi (valgfritt)" value={rule.filter.propValue}
-                    onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propValue:e.target.value}} : x))}
-                    style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 100px", minWidth:0 }}/>
+                  {rule.filter.mode === "name" && <>
+                    <input placeholder="Pset-filter (valgfritt)" value={rule.filter.propPset}
+                      onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propPset:e.target.value}} : x))}
+                      style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 120px", minWidth:0 }}/>
+                    <input placeholder="Egenskap (valgfritt)" value={rule.filter.propName}
+                      onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propName:e.target.value}} : x))}
+                      style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 120px", minWidth:0 }}/>
+                    <input placeholder="Verdi (valgfritt)" value={rule.filter.propValue}
+                      onChange={e => setRules(r => r.map(x => x.id===rule.id ? {...x, filter:{...x.filter, propValue:e.target.value}} : x))}
+                      style={{ fontSize:11, padding:"4px 6px", border:`1px solid ${M.gray1}`, borderRadius:3, fontFamily:"inherit", flex:"1 1 100px", minWidth:0 }}/>
+                  </>}
                 </div>
                 <div style={{ marginTop:6, display:"flex", alignItems:"center", gap:8 }}>
                   <button onClick={() => checkMatches(rule)} disabled={!hasIfc || matchLoading[rule.id]}
