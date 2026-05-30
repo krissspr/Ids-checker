@@ -247,7 +247,7 @@ def _build_krav_tekst(value_obj, enum_values, pattern, bounds, instructions, dat
     parts = []
 
     if enum_values:
-        parts.append(f"Skal ha en av følgende verdier: {', '.join(enum_values)}")
+        parts.append(f"Skal være en av følgende verdier: [{', '.join(enum_values)}]")
 
     elif bounds:
         b = []
