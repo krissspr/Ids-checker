@@ -149,6 +149,7 @@ for spec in specs.specifications:
             if val_obj is not None:
                 t = getattr(val_obj, "type", None)
                 opts = getattr(val_obj, "options", None)
+                print(f"DEBUG val_obj class={type(val_obj).__name__} type={t!r} opts={str(opts)[:120]!r} dir={[x for x in dir(val_obj) if not x.startswith('_')]}")
                 if t == "enumeration" and opts:
                     enum_vals = list(opts) if not isinstance(opts, dict) else list(opts.keys())
                 elif t == "pattern" and opts:
