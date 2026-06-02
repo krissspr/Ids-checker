@@ -14,340 +14,116 @@ const API_BASE = process.env.REACT_APP_API_URL || "https://ids-checker-api.railw
 
 // ── Pyodide hook ──────────────────────────────────────────────────────────────
 function usePyodide() {
-  const pyodideRef = useRef(null);
+  const workerRef = useRef(null);
   const loadingPromiseRef = useRef(null);
+  const pendingRef = useRef(null); // { resolve, reject, onStep? }
+  const proxyRef = useRef(null);
   const [pyStatus, setPyStatus] = useState("idle"); // idle | loading | ready | error
 
-  const load = () => {
-    // Return existing promise if already loading/loaded
-    if (loadingPromiseRef.current) return loadingPromiseRef.current;
-
-    loadingPromiseRef.current = (async () => {
-      if (pyodideRef.current) return pyodideRef.current;
-      setPyStatus("loading");
-      try {
-        if (!window.loadPyodide) {
-          await new Promise((resolve, reject) => {
-            const s = document.createElement("script");
-            s.src = "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/pyodide.js";
-            s.onload = resolve;
-            s.onerror = reject;
-            document.head.appendChild(s);
-          });
-        }
-        const pyodide = await window.loadPyodide({
-          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/",
-        });
-        await pyodide.loadPackage(["micropip", "numpy"]);
-        await pyodide.runPythonAsync(`
-import micropip
-await micropip.install(
-  "https://ifcopenshell.github.io/wasm-wheels/ifcopenshell-0.8.5-cp313-cp313-pyodide_2025_0_wasm32.whl",
-  keep_going=True
-)
-await micropip.install(["elementpath", "xmlschema", "ifctester"], deps=False)
-        `);
-        pyodideRef.current = pyodide;
+  const ensureWorker = () => {
+    if (workerRef.current) return workerRef.current;
+    const worker = new Worker(process.env.PUBLIC_URL + "/pyodide-worker.js");
+    worker.onmessage = (e) => {
+      const { type, ...data } = e.data;
+      if (type === "ready") {
         setPyStatus("ready");
-        return pyodide;
-      } catch (e) {
-        console.error("Pyodide load failed:", e);
-        setPyStatus("error");
-        loadingPromiseRef.current = null; // allow retry
-        throw e;
+        if (pendingRef.current) { pendingRef.current.resolve(); pendingRef.current = null; }
+      } else if (type === "step") {
+        pendingRef.current?.onStep?.(data.message);
+      } else if (type === "validate_result") {
+        if (pendingRef.current) { pendingRef.current.resolve(data.data); pendingRef.current = null; }
+      } else if (type === "update_result") {
+        if (pendingRef.current) { pendingRef.current.resolve(new Uint8Array(data.bytes)); pendingRef.current = null; }
+      } else if (type === "python_result") {
+        if (pendingRef.current) { pendingRef.current.resolve(data.result); pendingRef.current = null; }
+      } else if (type === "fs_read_result") {
+        if (pendingRef.current) { pendingRef.current.resolve(new Uint8Array(data.bytes)); pendingRef.current = null; }
+      } else if (type === "error") {
+        if (data.context === "load") setPyStatus("error");
+        if (pendingRef.current) { pendingRef.current.reject(new Error(data.message)); pendingRef.current = null; }
       }
-    })();
+    };
+    worker.onerror = (e) => {
+      setPyStatus("error");
+      if (pendingRef.current) { pendingRef.current.reject(new Error(e.message || "Worker error")); pendingRef.current = null; }
+    };
+    workerRef.current = worker;
+    return worker;
+  };
 
+  // Proxy returned from load() so PropertyEditorPage can use py.FS/py.globals/py.runPythonAsync
+  const getProxy = () => {
+    if (proxyRef.current) return proxyRef.current;
+    const pendingFiles = [];
+    const pendingGlobals = {};
+    const proxy = {
+      FS: {
+        writeFile(path, data) {
+          pendingFiles.push({ path, data: data instanceof Uint8Array ? data : new Uint8Array(data) });
+        },
+        readFile(path) {
+          const worker = workerRef.current;
+          if (!worker) return Promise.reject(new Error("Worker ikke opprettet"));
+          return new Promise((resolve, reject) => {
+            pendingRef.current = { resolve, reject };
+            worker.postMessage({ type: "fs_read", path });
+          });
+        },
+      },
+      globals: {
+        set(key, value) { pendingGlobals[key] = value; },
+      },
+      runPythonAsync(code) {
+        const worker = workerRef.current;
+        if (!worker) return Promise.reject(new Error("Worker ikke opprettet"));
+        return new Promise((resolve, reject) => {
+          pendingRef.current = { resolve, reject };
+          const files = pendingFiles.splice(0);
+          const globs = { ...pendingGlobals };
+          Object.keys(pendingGlobals).forEach(k => delete pendingGlobals[k]);
+          worker.postMessage({ type: "run_python", code, files, globals: globs });
+        });
+      },
+    };
+    proxyRef.current = proxy;
+    return proxy;
+  };
+
+  const load = () => {
+    if (loadingPromiseRef.current) return loadingPromiseRef.current;
+    setPyStatus("loading");
+    loadingPromiseRef.current = new Promise((resolve, reject) => {
+      pendingRef.current = { resolve, reject };
+      ensureWorker().postMessage({ type: "load" });
+    }).catch(e => { loadingPromiseRef.current = null; throw e; })
+      .then(() => getProxy());
     return loadingPromiseRef.current;
   };
 
-  const validate = async (ifcBytes, idsText, onStep) => {
-    if (!pyodideRef.current) throw new Error("Pyodide ikke klar");
-    const py = pyodideRef.current;
-
+  const validate = (ifcBytes, idsText, onStep) => {
+    const worker = workerRef.current;
+    if (!worker) return Promise.reject(new Error("Worker ikke opprettet"));
     onStep?.("Skriver IFC til filsystem…");
-    py.FS.writeFile("/model.ifc", new Uint8Array(ifcBytes));
-    py.FS.writeFile("/rules.ids", new TextEncoder().encode(idsText));
-
-    onStep?.("Kjører IDS-validering…");
-    const result = await py.runPythonAsync(`
-import json, ifcopenshell, ifcopenshell.express
-from ifctester import ids
-import js
-
-# Register IFC4X3_ADD2 schema at runtime if not already available
-def ensure_schema(schema_name):
-    try:
-        ifcopenshell.ifcopenshell_wrapper.schema_by_name(schema_name)
-        return True
-    except Exception:
-        return False
-
-if not ensure_schema("IFC4X3_ADD2"):
-    try:
-        from pyodide.http import pyfetch
-        resp = await pyfetch("https://raw.githubusercontent.com/buildingSMART/IFC4.3.x-output/master/IFC.exp")
-        exp_text = await resp.string()
-        with open("/IFC4X3_ADD2.exp", "w") as f:
-            f.write(exp_text)
-        schema = ifcopenshell.express.parse("/IFC4X3_ADD2.exp")
-        ifcopenshell.register_schema(schema)
-    except Exception as e:
-        pass  # fallback will handle it
-
-ifc_model = ifcopenshell.open("/model.ifc")
-specs = ids.open("/rules.ids")
-specs.validate(ifc_model)
-
-# DEBUG: print NominalValue IFC-type for all properties on first failing entity
-import ifcopenshell.util.element
-for spec in specs.specifications:
-    if spec.status:
-        continue
-    print(f"DEBUG SPEC FAIL: {spec.name}")
-    if not spec.failed_entities:
-        continue
-    ent = next(iter(spec.failed_entities))
-    for rel in getattr(ent, "IsDefinedBy", []):
-        pdef = getattr(rel, "RelatingPropertyDefinition", None)
-        if pdef and pdef.is_a("IfcPropertySet"):
-            for p in getattr(pdef, "HasProperties", []):
-                nv = getattr(p, "NominalValue", None)
-                print(f"  {pdef.Name}.{p.Name} = {nv!r} → is_a={nv.is_a() if nv else 'N/A'}")
-
-result_specs = []
-for spec in specs.specifications:
-    failing = []
-    for entity in spec.failed_entities:
-        try:
-            name = getattr(entity, "Name", None) or "(uten navn)"
-            guid = getattr(entity, "GlobalId", None)
-            ifc_type = entity.is_a()
-        except:
-            name = str(entity)
-            guid = None
-            ifc_type = "ukjent"
-
-        datatype_issue = False
-        for req in spec.requirements:
-            for reason in (getattr(req, "failed_reasons", []) or []):
-                r = str(reason).lower()
-                if any(kw in r for kw in ["datatype","ifclabel","ifctext","ifcreal","ifcinteger","type mismatch"]):
-                    datatype_issue = True
-                    break
-
-        failing.append({"guid": guid, "type": ifc_type, "name": name, "datatype_issue": datatype_issue, "reason": ""})
-
-    passed = len(spec.passed_entities)
-    failed = len(spec.failed_entities)
-    total = passed + failed
-
-    # requirements_detail
-    reqs = []
-    for req in spec.requirements:
-        cn = req.__class__.__name__
-        card = getattr(req, "cardinality", "required") or "required"
-        if card == "optional":
-            continue
-        if cn == "Property":
-            pset = str(getattr(req, "propertySet", {}) or "")
-            if hasattr(getattr(req, "propertySet", None), "args"):
-                pset = req.propertySet.args[0] if req.propertySet.args else pset
-            prop = str(getattr(req, "baseName", {}) or "")
-            if hasattr(getattr(req, "baseName", None), "args"):
-                prop = req.baseName.args[0] if req.baseName.args else prop
-            data_type = str(getattr(req, "dataType", "") or "")
-            instructions = str(getattr(req, "instructions", "") or "")
-            val_obj = getattr(req, "value", None)
-            enum_vals = []
-            pattern = None
-            bounds = {}
-            if val_obj is not None:
-                opts = getattr(val_obj, "options", None)
-                if isinstance(opts, dict):
-                    if "enumeration" in opts:
-                        enum_vals = [str(v) for v in opts["enumeration"]]
-                    elif "pattern" in opts:
-                        pattern = str(opts["pattern"])
-                    elif any(k in opts for k in ["minExclusive", "minInclusive", "maxExclusive", "maxInclusive"]):
-                        bounds = {k: opts[k] for k in ["minExclusive", "minInclusive", "maxExclusive", "maxInclusive"] if k in opts}
-                elif isinstance(opts, list):
-                    enum_vals = [str(v) for v in opts]
-                else:
-                    t = getattr(val_obj, "type", None)
-                    if t == "enumeration" and opts:
-                        enum_vals = [str(v) for v in opts]
-                    elif t == "pattern" and opts:
-                        pattern = str(opts)
-                    elif t == "bounds" and isinstance(opts, dict):
-                        bounds = opts
-            # krav_tekst
-            if enum_vals:
-                krav = f"Skal være en av følgende verdier: [{', '.join(str(v) for v in enum_vals)}]"
-            elif bounds:
-                parts = []
-                if "minExclusive" in bounds: parts.append(f"Større enn {bounds['minExclusive']}")
-                if "minInclusive" in bounds: parts.append(f"Minst {bounds['minInclusive']}")
-                if "maxExclusive" in bounds: parts.append(f"Mindre enn {bounds['maxExclusive']}")
-                if "maxInclusive" in bounds: parts.append(f"Maks {bounds['maxInclusive']}")
-                krav = ", ".join(parts) if parts else "Skal fylles ut"
-            elif pattern:
-                krav = "Skal fylles ut"
-            else:
-                krav = "Skal fylles ut"
-            if data_type:
-                krav += f" | Datatype: {data_type}"
-            reqs.append({"type": "Property", "pset": pset, "name": prop, "enum_values": enum_vals, "pattern": pattern, "bounds": bounds, "data_type": data_type, "instructions": instructions, "cardinality": card, "krav_tekst": krav, "description": f"{pset}.{prop}"})
-
-    # applicability_detail
-    appl = {"pset": None, "objekttype": None, "entity": None}
-    for facet in spec.applicability:
-        cn2 = facet.__class__.__name__
-        if cn2 == "Entity":
-            appl["entity"] = str(getattr(facet, "name", "") or "")
-        elif cn2 == "Property":
-            p2 = str(getattr(facet, "baseName", "") or "")
-            v2 = str(getattr(facet, "value", "") or "")
-            if p2.lower() in ("objekttype","type","objecttype"):
-                appl["objekttype"] = v2
-
-    result_specs.append({
-        "name": spec.name,
-        "status": "passed" if spec.status else "failed",
-        "applicability": str(spec.name),
-        "applicability_detail": appl,
-        "requirement": "",
-        "requirements_detail": reqs,
-        "failed_req_names": [],
-        "passed": passed, "failed": failed, "total": total,
-        "no_objects": total == 0,
-        "failures": failing[:50],
-        "more_failures": max(0, len(failing) - 50),
-    })
-
-total_passed = sum(1 for s in result_specs if s["status"] == "passed")
-total_failed = sum(1 for s in result_specs if s["status"] == "failed")
-json.dumps({"summary": {"passed": total_passed, "failed": total_failed, "total": total_passed + total_failed}, "specifications": result_specs})
-`);
-    return JSON.parse(result);
+    return new Promise((resolve, reject) => {
+      pendingRef.current = { resolve, reject, onStep };
+      // postMessage clones the buffer — main thread keeps its copy for Railway fallback
+      const buf = ifcBytes instanceof ArrayBuffer ? ifcBytes : ifcBytes.buffer;
+      worker.postMessage({ type: "validate", ifcBytes: buf, idsText });
+    });
   };
 
-  const updateProperties = async (requirements, guids, outputFilename, onStep) => {
-    if (!pyodideRef.current) throw new Error("Pyodide ikke klar");
-    const py = pyodideRef.current;
-
-    // Check that model.ifc exists in virtual FS
-    try { py.FS.stat("/model.ifc"); } catch {
-      throw new Error("IFC-fil ikke funnet i Pyodide – kjør validering først");
-    }
-
-    onStep?.("Redigerer egenskaper i IFC…");
-
-    // Pass requirements and guids as JSON
-    py.globals.set("requirements_json", JSON.stringify(requirements));
-    py.globals.set("guids_json", JSON.stringify(guids));
-
-    await py.runPythonAsync(`
-import json, ifcopenshell, ifcopenshell.api
-
-req_list = json.loads(requirements_json)
-guid_list = json.loads(guids_json)
-
-# IFC datatype mapping
-DATATYPE_MAP = {
-    "IfcLabel": lambda v: ifcopenshell.util.element.get_pset,  # handled below
-    "IfcText": str,
-    "IfcIdentifier": str,
-    "IfcReal": float,
-    "IfcInteger": int,
-    "IfcBoolean": lambda v: v.lower() in ("true", "1", "ja", "yes"),
-    "IfcLengthMeasure": float,
-    "IfcAreaMeasure": float,
-    "IfcVolumeMeasure": float,
-    "IfcMassMeasure": float,
-    "IfcPositiveLengthMeasure": float,
-    "IfcPlaneAngleMeasure": float,
-    "IfcCountMeasure": int,
-}
-
-def cast_value(value, data_type, schema):
-    """Cast value to correct IFC type."""
-    if not data_type:
-        return value
-    dt = data_type.strip()
-    try:
-        ifc_type = schema.declaration_by_name(dt)
-        if ifc_type:
-            return ifc_type(value)
-    except Exception:
-        pass
-    # Fallback: basic Python types
-    if dt in ("IfcReal", "IfcLengthMeasure", "IfcAreaMeasure", "IfcVolumeMeasure",
-              "IfcMassMeasure", "IfcPositiveLengthMeasure", "IfcPlaneAngleMeasure"):
-        return float(value)
-    if dt in ("IfcInteger", "IfcCountMeasure"):
-        return int(value)
-    if dt == "IfcBoolean":
-        return value.lower() in ("true", "1", "ja", "yes")
-    return value  # string fallback (IfcLabel, IfcText etc)
-
-model = ifcopenshell.open("/model.ifc")
-schema = model.schema_identifier
-ifc_schema = ifcopenshell.ifcopenshell_wrapper.schema_by_name(schema)
-updated = 0
-
-for guid in guid_list:
-    try:
-        entity = model.by_guid(guid)
-    except Exception:
-        continue
-    if entity is None:
-        continue
-
-    for req in req_list:
-        pset_name = req.get("pset", "")
-        prop_name = req.get("name", "")
-        prop_value = req.get("value", "")
-        data_type = req.get("data_type", "")
-
-        if not pset_name or not prop_name or prop_value == "":
-            continue
-
-        # Cast to correct IFC type
-        try:
-            typed_value = cast_value(prop_value, data_type, ifc_schema)
-        except Exception:
-            typed_value = prop_value
-
-        # Find or create pset
-        psets = ifcopenshell.util.element.get_psets(entity)
-        if pset_name in psets:
-            pset_obj = model.by_id(psets[pset_name]["id"])
-            ifcopenshell.api.run("pset.edit_pset", model,
-                pset=pset_obj,
-                properties={prop_name: typed_value},
-            )
-        else:
-            pset_obj = ifcopenshell.api.run("pset.add_pset", model,
-                product=entity, name=pset_name)
-            ifcopenshell.api.run("pset.edit_pset", model,
-                pset=pset_obj,
-                properties={prop_name: typed_value},
-            )
-
-    updated += 1
-
-model.write("/model_korrigert.ifc")
-print(f"Updated {updated} objects", flush=True)
-`);
-
-    onStep?.("Leser korrigert fil…");
-    const outBytes = py.FS.readFile("/model_korrigert.ifc");
-    return outBytes;
+  const updateProperties = (requirements, guids, outputFilename, onStep) => {
+    const worker = workerRef.current;
+    if (!worker) return Promise.reject(new Error("Worker ikke opprettet"));
+    return new Promise((resolve, reject) => {
+      pendingRef.current = { resolve, reject, onStep };
+      worker.postMessage({ type: "update_properties", requirements, guids });
+    });
   };
 
   return { pyStatus, load, validate, updateProperties };
 }
+
 
 // ── Debug logger ──────────────────────────────────────────────────────────────
 const log = {
@@ -2192,7 +1968,7 @@ json.dumps({"rules": results, "total": sum(r["count"] for r in results)})
       const data = JSON.parse(resultJson);
       setRunLog(l => [...l, `Ferdig! ${data.total} objekter oppdatert.`]);
       data.rules.forEach(r => setRunLog(l => [...l, `  ${r.label}: ${r.count} objekter`]));
-      const outBytes = py.FS.readFile("/pe_output.ifc");
+      const outBytes = await py.FS.readFile("/pe_output.ifc");
       const baseName = (activeIfcFile?.name || "model").replace(/\.ifc$/i, "");
       setResultBytes(outBytes);
       setResultName(`${baseName}_korrigert.ifc`);
