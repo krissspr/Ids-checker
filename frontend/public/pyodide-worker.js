@@ -47,21 +47,20 @@ ifc_model = ifcopenshell.open("/model.ifc")
 specs = ids.open("/rules.ids")
 specs.validate(ifc_model)
 
-# DEBUG: print NominalValue IFC-type for all properties on first failing entity
-import ifcopenshell.util.element
+# DEBUG: print per-requirement failures to find which req actually fires
 for spec in specs.specifications:
     if spec.status:
         continue
     print(f"DEBUG SPEC FAIL: {spec.name}")
-    if not spec.failed_entities:
-        continue
-    ent = next(iter(spec.failed_entities))
-    for rel in getattr(ent, "IsDefinedBy", []):
-        pdef = getattr(rel, "RelatingPropertyDefinition", None)
-        if pdef and pdef.is_a("IfcPropertySet"):
-            for p in getattr(pdef, "HasProperties", []):
-                nv = getattr(p, "NominalValue", None)
-                print(f"  {pdef.Name}.{p.Name} = {nv!r} -> is_a={nv.is_a() if nv else 'N/A'}")
+    for req in spec.requirements:
+        cn = req.__class__.__name__
+        prop = getattr(req, "baseName", None)
+        pset = getattr(req, "propertySet", None)
+        prop_str = str(prop) if prop else cn
+        pset_str = str(pset) if pset else ""
+        failed_ents = getattr(req, "failed_entities", set())
+        reasons = getattr(req, "failed_reasons", []) or []
+        print(f"  REQ {pset_str}.{prop_str}: failed={len(failed_ents)} reasons={[str(r)[:120] for r in list(reasons)[:3]]}")
 
 result_specs = []
 for spec in specs.specifications:
