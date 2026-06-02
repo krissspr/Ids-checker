@@ -114,7 +114,7 @@ for spec in specs.specifications:
                 print(f"    reason: {str(r)[:200]}")
         # For first failing entity, show actual value and type in IFC
         if spec.failed_entities:
-            ent = spec.failed_entities[0]
+            ent = next(iter(spec.failed_entities))
             try:
                 pset_name = str(getattr(req, "propertySet", "") or "")
                 prop_name2 = str(getattr(req, "baseName", "") or "")
