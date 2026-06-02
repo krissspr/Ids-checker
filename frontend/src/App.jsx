@@ -2501,7 +2501,7 @@ export default function IDSChecker() {
   const [loadingStep, setLoadingStep] = useState(null);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
-  const [filterFailed, setFilterFailed] = useState(false);
+  const [filterFailed, setFilterFailed] = useState(true);
   const [editingSpec, setEditingSpec] = useState(null);
   const timer = useTimer(isRunning);
 
