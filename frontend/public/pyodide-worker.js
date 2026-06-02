@@ -142,12 +142,21 @@ for spec in specs.specifications:
                 krav = "Skal fylles ut"
             if data_type:
                 krav += f" | Datatype: {data_type}"
-            _req_failed = list(getattr(req, 'failed_entities', set()) or set())
+            _req_ents = list(getattr(req, 'failed_entities', set()) or set())
+            if not _req_ents:
+                # Newer ifctester does not populate req.failed_entities —
+                # call the facet directly on each spec-level failing entity
+                for _e in spec.failed_entities:
+                    try:
+                        if not bool(req(_e)):
+                            _req_ents.append(_e)
+                    except Exception:
+                        pass
             _req_failing = []
-            for _e in _req_failed:
+            for _e in _req_ents:
                 try:
                     _req_failing.append({"guid": getattr(_e, "GlobalId", None), "name": getattr(_e, "Name", None) or "(uten navn)", "type": _e.is_a()})
-                except:
+                except Exception:
                     pass
             reqs.append({"type": "Property", "pset": pset, "name": prop, "enum_values": enum_vals, "pattern": pattern, "bounds": bounds, "data_type": data_type, "instructions": instructions, "cardinality": card, "krav_tekst": krav, "description": f"{pset}.{prop}", "failing": _req_failing})
 
