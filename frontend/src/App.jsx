@@ -99,40 +99,21 @@ ifc_model = ifcopenshell.open("/model.ifc")
 specs = ids.open("/rules.ids")
 specs.validate(ifc_model)
 
-# DEBUG: print failed_reasons and actual property values for failing specs
+# DEBUG: print NominalValue IFC-type for all properties on first failing entity
 import ifcopenshell.util.element
 for spec in specs.specifications:
     if spec.status:
         continue
     print(f"DEBUG SPEC FAIL: {spec.name}")
-    for req in spec.requirements:
-        reasons = getattr(req, "failed_reasons", []) or []
-        if reasons:
-            prop_name = str(getattr(req, "baseName", "") or "")
-            print(f"  REQ {prop_name}: {len(reasons)} feil")
-            for r in reasons[:3]:
-                print(f"    reason: {str(r)[:200]}")
-        # For first failing entity, show actual value and type in IFC
-        if spec.failed_entities:
-            ent = next(iter(spec.failed_entities))
-            try:
-                pset_name = str(getattr(req, "propertySet", "") or "")
-                prop_name2 = str(getattr(req, "baseName", "") or "")
-                psets = ifcopenshell.util.element.get_psets(ent)
-                pset = psets.get(pset_name, {})
-                raw_val = pset.get(prop_name2, "IKKE FUNNET")
-                print(f"    IFC-verdi for {pset_name}.{prop_name2}: {raw_val!r} (type: {type(raw_val).__name__})")
-                # Also check raw IFC attribute
-                for rel in getattr(ent, "IsDefinedBy", []):
-                    if hasattr(rel, "RelatingPropertyDefinition"):
-                        pdef = rel.RelatingPropertyDefinition
-                        if hasattr(pdef, "Name") and str(pdef.Name) == pset_name:
-                            for p in getattr(pdef, "HasProperties", []):
-                                if hasattr(p, "Name") and str(p.Name) == prop_name2:
-                                    nv = getattr(p, "NominalValue", None)
-                                    print(f"    NominalValue: {nv!r}, is_a={nv.is_a() if nv else 'N/A'}")
-            except Exception as e:
-                print(f"    debug error: {e}")
+    if not spec.failed_entities:
+        continue
+    ent = next(iter(spec.failed_entities))
+    for rel in getattr(ent, "IsDefinedBy", []):
+        pdef = getattr(rel, "RelatingPropertyDefinition", None)
+        if pdef and pdef.is_a("IfcPropertySet"):
+            for p in getattr(pdef, "HasProperties", []):
+                nv = getattr(p, "NominalValue", None)
+                print(f"  {pdef.Name}.{p.Name} = {nv!r} → is_a={nv.is_a() if nv else 'N/A'}")
 
 result_specs = []
 for spec in specs.specifications:
