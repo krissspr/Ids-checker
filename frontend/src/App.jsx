@@ -840,13 +840,12 @@ function TodoButton({ spec, onCreateTodo, tc }) {
   const buildDesc = () => {
     const reqs = spec.requirements_detail || [];
     const appl = spec.applicability_detail || {};
-    const failedNames = new Set(spec.failed_req_names || []);
 
-    if (reqs.length > 0) {
+    const failingReqs = reqs.filter(r => r.cardinality !== "optional" && Array.isArray(r.failing) && r.failing.length > 0);
+
+    if (failingReqs.length > 0) {
       const byPset = {};
-      reqs.forEach(r => {
-        // Skip optional requirements that don't have failures
-        if (r.cardinality === "optional" && !failedNames.has(r.name)) return;
+      failingReqs.forEach(r => {
         const pset = r.pset || "Egenskaper";
         if (!byPset[pset]) byPset[pset] = [];
         byPset[pset].push(r);
@@ -855,28 +854,35 @@ function TodoButton({ spec, onCreateTodo, tc }) {
       const lines = [];
       Object.entries(byPset).forEach(([pset, props]) => {
         if (props.length === 0) return;
-
-        // Header with objekttype if available
         const objekttype = appl.objekttype ? ` for objekter med objekttype: ${appl.objekttype}` : "";
         lines.push(`Feil i egenskapsdata${objekttype} i egenskapssett: ${pset}`);
-        lines.push(``);
-        lines.push(`Nedenfor listes egenskapene med hver sine krav.`);
         lines.push(``);
         props.forEach(r => {
           const krav = r.krav_tekst || "Skal fylles ut";
           lines.push(`${r.name}: --> ${krav}`);
+          r.failing.forEach(f => lines.push(`  - ${f.name} (${f.type})`));
+          lines.push(``);
         });
-        lines.push(``);
       });
 
       lines.push(`Feilet: ${spec.failed} av ${spec.total} objekter`);
       return lines.join("\n");
     }
-    return [
-      `Krav: ${spec.requirement}`,
-      ``,
-      `Feilet: ${spec.failed} av ${spec.total} objekter`,
-    ].join("\n");
+
+    // Fallback when per-requirement failing data is unavailable
+    const allReqs = reqs.filter(r => r.cardinality !== "optional");
+    if (allReqs.length > 0) {
+      const lines = [];
+      const objekttype = appl.objekttype ? ` for objekter med objekttype: ${appl.objekttype}` : "";
+      lines.push(`Feil i egenskapsdata${objekttype}`);
+      lines.push(``);
+      allReqs.forEach(r => lines.push(`${r.name}: --> ${r.krav_tekst || "Skal fylles ut"}`));
+      lines.push(``);
+      lines.push(`Feilet: ${spec.failed} av ${spec.total} objekter`);
+      return lines.join("\n");
+    }
+
+    return [`Krav: ${spec.requirement}`, ``, `Feilet: ${spec.failed} av ${spec.total} objekter`].join("\n");
   };
 
   const defaultDesc = buildDesc();
@@ -1033,11 +1039,12 @@ function TopicButton({ spec, onCreateTopic, tc }) {
   const buildDesc = () => {
     const reqs = spec.requirements_detail || [];
     const appl = spec.applicability_detail || {};
-    const failedNames = new Set(spec.failed_req_names || []);
-    if (reqs.length > 0) {
+
+    const failingReqs = reqs.filter(r => r.cardinality !== "optional" && Array.isArray(r.failing) && r.failing.length > 0);
+
+    if (failingReqs.length > 0) {
       const byPset = {};
-      reqs.forEach(r => {
-        if (r.cardinality === "optional" && !failedNames.has(r.name)) return;
+      failingReqs.forEach(r => {
         const pset = r.pset || "Egenskaper";
         if (!byPset[pset]) byPset[pset] = [];
         byPset[pset].push(r);
@@ -1048,16 +1055,29 @@ function TopicButton({ spec, onCreateTopic, tc }) {
         const objekttype = appl.objekttype ? ` for objekter med objekttype: ${appl.objekttype}` : "";
         lines.push(`Feil i egenskapsdata${objekttype} i egenskapssett: ${pset}`);
         lines.push(``);
-        lines.push(`Nedenfor listes egenskapene med hver sine krav.`);
-        lines.push(``);
         props.forEach(r => {
           lines.push(`${r.name}: --> ${r.krav_tekst || "Skal fylles ut"}`);
+          r.failing.forEach(f => lines.push(`  - ${f.name} (${f.type})`));
+          lines.push(``);
         });
-        lines.push(``);
       });
       lines.push(`Feilet: ${spec.failed} av ${spec.total} objekter`);
       return lines.join("\n");
     }
+
+    // Fallback when per-requirement failing data is unavailable
+    const allReqs = reqs.filter(r => r.cardinality !== "optional");
+    if (allReqs.length > 0) {
+      const lines = [];
+      const objekttype = appl.objekttype ? ` for objekter med objekttype: ${appl.objekttype}` : "";
+      lines.push(`Feil i egenskapsdata${objekttype}`);
+      lines.push(``);
+      allReqs.forEach(r => lines.push(`${r.name}: --> ${r.krav_tekst || "Skal fylles ut"}`));
+      lines.push(``);
+      lines.push(`Feilet: ${spec.failed} av ${spec.total} objekter`);
+      return lines.join("\n");
+    }
+
     return [`Krav: ${spec.requirement}`, ``, `Feilet: ${spec.failed} av ${spec.total} objekter`].join("\n");
   };
 
