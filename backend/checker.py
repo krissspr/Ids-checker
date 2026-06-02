@@ -293,29 +293,21 @@ def _extract_enum(value_obj) -> list:
     if value_obj is None:
         return []
 
-    # If it's a Restriction object with enumeration type
+    # New ifctester: options is a dict with type as key, e.g. {'enumeration': ['H1', 'H2']}
+    if hasattr(value_obj, 'options'):
+        opts = value_obj.options
+        if isinstance(opts, dict) and 'enumeration' in opts:
+            return [str(v) for v in opts['enumeration']]
+        if isinstance(opts, list):
+            return [str(v) for v in opts]
+
+    # Old ifctester: type attribute set to 'enumeration'
     if hasattr(value_obj, 'type') and getattr(value_obj, 'type', None) == 'enumeration':
         opts = getattr(value_obj, 'options', [])
         if isinstance(opts, list):
             return [str(v) for v in opts]
 
-    # If it's a dict representation
-    if isinstance(value_obj, dict):
-        # Check for restriction with enumeration
-        restriction = value_obj.get('restriction', [])
-        if isinstance(restriction, list):
-            enums = []
-            for r in restriction:
-                if isinstance(r, dict) and r.get('@base') == 'xs:string':
-                    for item in r.get('xs:enumeration', []):
-                        if isinstance(item, dict):
-                            enums.append(item.get('@value', ''))
-                        else:
-                            enums.append(str(item))
-            if enums:
-                return enums
-
-    # If it's already a list (some versions of ifctester)
+    # If it's already a list
     if isinstance(value_obj, list):
         return [str(v) for v in value_obj]
 
@@ -326,6 +318,12 @@ def _extract_pattern(value_obj) -> str:
     """Extract pattern from an IDS value/restriction object."""
     if value_obj is None:
         return None
+    # New ifctester: options is {'pattern': '...'}
+    if hasattr(value_obj, 'options'):
+        opts = value_obj.options
+        if isinstance(opts, dict) and 'pattern' in opts:
+            return str(opts['pattern'])
+    # Old ifctester: type == 'pattern'
     if hasattr(value_obj, 'type') and getattr(value_obj, 'type', None) == 'pattern':
         return str(getattr(value_obj, 'options', ''))
     return None

@@ -147,15 +147,24 @@ for spec in specs.specifications:
             pattern = None
             bounds = {}
             if val_obj is not None:
-                t = getattr(val_obj, "type", None)
                 opts = getattr(val_obj, "options", None)
-                print(f"DEBUG val_obj class={type(val_obj).__name__} type={t!r} opts={str(opts)[:120]!r} dir={[x for x in dir(val_obj) if not x.startswith('_')]}")
-                if t == "enumeration" and opts:
-                    enum_vals = list(opts) if not isinstance(opts, dict) else list(opts.keys())
-                elif t == "pattern" and opts:
-                    pattern = str(opts) if not isinstance(opts, dict) else str(list(opts.keys())[0])
-                elif t == "bounds" and isinstance(opts, dict):
-                    bounds = opts
+                if isinstance(opts, dict):
+                    if "enumeration" in opts:
+                        enum_vals = [str(v) for v in opts["enumeration"]]
+                    elif "pattern" in opts:
+                        pattern = str(opts["pattern"])
+                    elif any(k in opts for k in ["minExclusive", "minInclusive", "maxExclusive", "maxInclusive"]):
+                        bounds = {k: opts[k] for k in ["minExclusive", "minInclusive", "maxExclusive", "maxInclusive"] if k in opts}
+                elif isinstance(opts, list):
+                    enum_vals = [str(v) for v in opts]
+                else:
+                    t = getattr(val_obj, "type", None)
+                    if t == "enumeration" and opts:
+                        enum_vals = [str(v) for v in opts]
+                    elif t == "pattern" and opts:
+                        pattern = str(opts)
+                    elif t == "bounds" and isinstance(opts, dict):
+                        bounds = opts
             # krav_tekst
             if enum_vals:
                 krav = f"Skal være en av følgende verdier: [{', '.join(str(v) for v in enum_vals)}]"
