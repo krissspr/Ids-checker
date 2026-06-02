@@ -1,0 +1,1292 @@
+<ids:ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns:ids="http://standards.buildingsmart.org/IDS">
+  <!--IDS created by Datacomp IDS Maker-->
+  <ids:info>
+    <ids:title>Fagmodell veg</ids:title>
+  </ids:info>
+  <ids:specifications>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Slitelag - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Slitelag</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" instructions="Objektsamling skal være Overbygnging - IFCTEXT" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektsamling</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Overbygning</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Objektnavn må oppgis" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektnavn</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Tykkelse skal oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Tykkelse</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Volum skal oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Volum</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Bindelag - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Bindelag</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="optional" instructions="Objektsamling skal være Overbygning - IFCTEXT" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektsamling</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Overbygning</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Objektnavn må oppgis" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektnavn</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Tykkelse skal oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Tykkelse</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Volum skal oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Volum</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Lagnummer skal være enten 1 eller 2" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Lagnummer</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="1" />
+              <xs:enumeration value="2" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Bærelag - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Bærelag</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektsamling</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Overbygning</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Objektnavn må oppgis" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektnavn</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Tykkelse skal oppgis. Bruk punktum til å skille desimaltall" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Tykkelse</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Volum skal oppgis. Bruk punktum til å skille desimaltall" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Volum</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Lagnummer</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="1" />
+              <xs:enumeration value="2" />
+              <xs:enumeration value="3" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Forsterkningslag - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Forsterkningslag</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektsamling</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Overbygning</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Objektnavn må oppgis" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektnavn</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Tykkelse skal oppgis. Bruk punktum til å skille desimaltall" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Tykkelse</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Volum skal oppgis. Bruk punktum til å skille desimaltall" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Volum</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Lagnummer</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="1" />
+              <xs:enumeration value="2" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Frostsikringslag - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Frostsikringslag</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektsamling</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Overbygning</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Objektnavn må oppgis" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektnavn</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Tykkelse skal oppgis. Bruk punktum til å skille desimaltall" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Tykkelse</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Volum skal oppgis. Bruk punktum til å skille desimaltall" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Volum</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Filterduk - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Filterduk</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektsamling</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Overbygning</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Objektnavn må oppgis" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objektnavn</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Leveransedata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Kontrollert av</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Leveransedato</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="^\d{4}-\d{2}-\d{2}$" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Revisjonsbokstav</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="^[A-Z]$" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Utført av</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Objektdata - Generell">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objekttdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="Objekttype" />
+            </xs:restriction>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Slitelag" />
+              <xs:enumeration value="Bindelag" />
+              <xs:enumeration value="Bærelag" />
+              <xs:enumeration value="Forsterkningslag" />
+              <xs:enumeration value="Frostsikringslag" />
+              <xs:enumeration value="Grøfteflate" />
+              <xs:enumeration value="Grøftebunn" />
+              <xs:enumeration value="Skjæringsskråning" />
+              <xs:enumeration value="Skjæring" />
+              <xs:enumeration value="Fyllingsskråning" />
+              <xs:enumeration value="Fylling" />
+              <xs:enumeration value="Planum" />
+              <xs:enumeration value="Kjørefelt" />
+              <xs:enumeration value="Skulder" />
+              <xs:enumeration value="Kollektivfelt" />
+              <xs:enumeration value="Sykkelfelt" />
+              <xs:enumeration value="Gang- og Sykkelveg" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Delmodell</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Profilslutt</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minInclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Prosjektspesifikk ID</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>MMI</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>400</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Profilstart</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minInclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Prosessdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Slitelag" />
+              <xs:enumeration value="Bindelag" />
+              <xs:enumeration value="Bærelag" />
+              <xs:enumeration value="Forsterkningslag" />
+              <xs:enumeration value="Forstsikringslag" />
+              <xs:enumeration value="Filterduk" />
+              <xs:enumeration value="Planum" />
+              <xs:enumeration value="Fylling" />
+              <xs:enumeration value="Skjæring" />
+              <xs:enumeration value="Grøftebunn" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" instructions="Mengde skal oppgis. Bruk punktum til å skille mellom heltall og desimaler. Datatype: IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Prosessmengde</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Skriv inn &quot;Ja&quot; dersom objektet er prisbærende, &quot;Nei&quot; ellers - IFCTEXT" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Er prisbærende</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Ja" />
+              <xs:enumeration value="Nei" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Sted</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Element</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Oppgi prosessmengdens enhet. F.eks. &quot;m, m2, m3, Stk.&quot; - IFCTEXT" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Enhet</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Prosessnummer skal oppgis. Bruk punktum til å skille mellom heltall og desimaler. - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Prosessnummer</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Prosessnavn skal oppgis - IFCTEXT" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Prosessnavn</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Fylling - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Fylling</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Fyllingstype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Kjernefylling" />
+              <xs:enumeration value="Indre Fylling" />
+              <xs:enumeration value="Ytre Fylling" />
+              <xs:enumeration value="Avrunding" />
+              <xs:enumeration value="Bakkeplanering" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Volum skal oppgis. Bruk punktum til å skille desimaltall" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Volum</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Fyllingsskråning - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Fyllingsskråning</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Flatenummer</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Fyllingsskråningstype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Indre Fyllingsskråning" />
+              <xs:enumeration value="Fyllingsskråning" />
+              <xs:enumeration value="Bakkeplaneringsskråning" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Skjæring - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Skjæring</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Skjæringstype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Vegetasjonsdekke" />
+              <xs:enumeration value="Løsmasseskjæring" />
+              <xs:enumeration value="Bergskjæring" />
+              <xs:enumeration value="Matjord" />
+              <xs:enumeration value="Jordskjæring" />
+              <xs:enumeration value="Avrunding" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" instructions="Volum skal oppgis. Bruk punktum til å skille desimaltall" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Volum</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Skjæringsskråning - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Skjæringsskråning</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Skjæringsskråningstype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Vegetasjonsdekke" />
+              <xs:enumeration value="Løsmasseskjæring" />
+              <xs:enumeration value="Bergskjæring" />
+              <xs:enumeration value="Matjord" />
+              <xs:enumeration value="Jordskjæring" />
+              <xs:enumeration value="Avrunding" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Flatenummer</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Grøftebunn - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Grøftebunn</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Flatenummer</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Grøfteflate - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Grøfteflate</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" instructions="Areal kan oppgis. Bruk punktum til å skille desimaltall - IFCREAL" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Areal2D</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Flatenummer</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Objekter uten egenskapssett Prosessdata" description="Finner hvilke objekter som ikke har egenskapsset Prosessdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+  </ids:specifications>
+</ids:ids>
