@@ -105,6 +105,22 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
     }
 
 
+def _req_failing(req) -> list:
+    """Return [{guid, name, type}] for entities that failed this specific requirement facet."""
+    failed = getattr(req, "failed_entities", None) or set()
+    result = []
+    for entity in failed:
+        try:
+            result.append({
+                "guid": getattr(entity, "GlobalId", None),
+                "name": getattr(entity, "Name", None) or "(uten navn)",
+                "type": entity.is_a() if hasattr(entity, "is_a") else "ukjent",
+            })
+        except Exception:
+            pass
+    return result
+
+
 def _extract_requirements(spec) -> list:
     result = []
 
@@ -140,6 +156,7 @@ def _extract_requirements(spec) -> list:
                 "cardinality": cardinality,
                 "krav_tekst": krav_tekst,
                 "description": f"{pset}.{prop}",
+                "failing": _req_failing(req),
             })
 
         elif class_name == "Attribute":
@@ -169,6 +186,7 @@ def _extract_requirements(spec) -> list:
                 "cardinality": cardinality,
                 "krav_tekst": krav_tekst,
                 "description": attr_name,
+                "failing": _req_failing(req),
             })
 
         elif class_name == "Classification":
@@ -184,6 +202,7 @@ def _extract_requirements(spec) -> list:
                 "cardinality": "required",
                 "krav_tekst": "Klassifisering påkrevd",
                 "description": "Klassifisering påkrevd",
+                "failing": _req_failing(req),
             })
 
         elif class_name == "Material":
@@ -199,6 +218,7 @@ def _extract_requirements(spec) -> list:
                 "cardinality": "required",
                 "krav_tekst": "Materiale påkrevd",
                 "description": "Materiale påkrevd",
+                "failing": _req_failing(req),
             })
 
     return result

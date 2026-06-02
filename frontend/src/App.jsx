@@ -1217,12 +1217,6 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
 
       {open && spec.failures?.length > 0 && (
         <div style={{padding:"10px 12px",background:M.white}}>
-          <div style={{fontSize:10,color:M.gray6,marginBottom:8,fontStyle:"italic"}}>
-            {spec.requirements_detail?.filter(r => r.cardinality !== "optional").map((r, i) => (
-              <div key={i}>{r.pset ? `${r.pset}.${r.name}` : r.name}: {r.krav_tekst}</div>
-            )) || <div>{spec.requirement}</div>}
-          </div>
-
           {/* No objects warning */}
           {spec.no_objects && (
             <div style={{ padding:"6px 10px", borderRadius:4, fontSize:11, background:M.yellowPale, border:`1px solid ${M.yellow}`, color:M.gray8, marginBottom:8 }}>
@@ -1230,25 +1224,75 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
             </div>
           )}
 
-          {spec.failures.map((f, i) => (
-            <div
-              key={i}
-              onClick={() => onMark && f.guid && onMark([f.guid])}
-              style={{ display:"flex", gap:8, alignItems:"center", padding:"5px 6px", borderRadius:3, borderBottom:i<spec.failures.length-1?`1px solid ${M.grayLight}`:"none", cursor: onMark && f.guid ? "pointer" : "default", transition:"background 0.1s" }}
-              onMouseEnter={e => { if (onMark && f.guid) e.currentTarget.style.background = M.bluePale; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-              title={onMark && f.guid ? "Klikk for å markere i viewer" : ""}
-            >
-              <div style={{width:5,height:5,borderRadius:"50%",background:M.red,flexShrink:0}}/>
-              <div style={{fontSize:11,color:M.gray,flex:1}}>{f.name}</div>
-              {f.datatype_issue && (
-                <span style={{ fontSize:9, background:M.yellowPale, color:M.yellowDark, border:`1px solid ${M.yellow}`, borderRadius:3, padding:"1px 5px", fontWeight:700 }}>DATATYPE</span>
-              )}
-              <div style={{fontSize:10,fontFamily:"monospace",color:M.gray6}}>{f.type}</div>
-              {onMark && f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
-            </div>
-          ))}
-          {spec.more_failures > 0 && <div style={{fontSize:10,color:M.gray6,marginTop:6}}>+ {spec.more_failures} flere</div>}
+          {(() => {
+            const reqs = spec.requirements_detail?.filter(r => r.cardinality !== "optional") || [];
+            const hasGrouped = reqs.some(r => Array.isArray(r.failing));
+
+            if (hasGrouped) {
+              // ── Requirement-grouped view ──────────────────────────────────────
+              return reqs.map((r, ri) => {
+                const failing = r.failing || [];
+                const label = r.pset ? `${r.pset}.${r.name}` : r.name;
+                return (
+                  <div key={ri} style={{marginBottom: ri < reqs.length - 1 ? 10 : 0}}>
+                    {/* Requirement header badge */}
+                    <div style={{display:"flex", alignItems:"baseline", gap:6, marginBottom:4, flexWrap:"wrap"}}>
+                      <span style={{
+                        fontSize:10, fontWeight:700, fontFamily:"monospace",
+                        background: failing.length > 0 ? M.redPale : M.greenPale,
+                        color: failing.length > 0 ? M.redDark : M.greenDark,
+                        border: `1px solid ${failing.length > 0 ? M.red : M.green}40`,
+                        borderRadius:3, padding:"1px 7px", flexShrink:0,
+                      }}>{label}</span>
+                      <span style={{fontSize:10, color:M.gray6, fontStyle:"italic"}}>{r.krav_tekst}</span>
+                      {failing.length === 0 && (
+                        <span style={{fontSize:10, color:M.greenDark}}>✓ alle bestått</span>
+                      )}
+                    </div>
+                    {/* Failing entities for this requirement */}
+                    {failing.slice(0, 50).map((f, fi) => (
+                      <div key={fi}
+                        onClick={() => onMark && f.guid && onMark([f.guid])}
+                        style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 6px", paddingLeft:12, borderRadius:3, borderBottom:fi < Math.min(failing.length, 50) - 1 ? `1px solid ${M.grayLight}` : "none", cursor:onMark&&f.guid?"pointer":"default", transition:"background 0.1s" }}
+                        onMouseEnter={e => { if (onMark&&f.guid) e.currentTarget.style.background = M.bluePale; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <div style={{width:4,height:4,borderRadius:"50%",background:M.red,flexShrink:0,marginTop:1}}/>
+                        <div style={{fontSize:11,color:M.gray,flex:1}}>{f.name}</div>
+                        <div style={{fontSize:10,fontFamily:"monospace",color:M.gray6}}>{f.type}</div>
+                        {onMark&&f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
+                      </div>
+                    ))}
+                    {failing.length > 50 && <div style={{fontSize:10,color:M.gray6,marginTop:3,paddingLeft:12}}>+ {failing.length - 50} flere</div>}
+                  </div>
+                );
+              });
+            }
+
+            // ── Fallback: flat list (no per-requirement data) ─────────────────
+            return (
+              <>
+                <div style={{fontSize:10,color:M.gray6,marginBottom:8,fontStyle:"italic"}}>
+                  {reqs.map((r, i) => <div key={i}>{r.pset ? `${r.pset}.${r.name}` : r.name}: {r.krav_tekst}</div>)}
+                </div>
+                {spec.failures.map((f, i) => (
+                  <div key={i}
+                    onClick={() => onMark && f.guid && onMark([f.guid])}
+                    style={{ display:"flex", gap:8, alignItems:"center", padding:"5px 6px", borderRadius:3, borderBottom:i<spec.failures.length-1?`1px solid ${M.grayLight}`:"none", cursor:onMark&&f.guid?"pointer":"default", transition:"background 0.1s" }}
+                    onMouseEnter={e => { if (onMark&&f.guid) e.currentTarget.style.background = M.bluePale; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <div style={{width:5,height:5,borderRadius:"50%",background:M.red,flexShrink:0}}/>
+                    <div style={{fontSize:11,color:M.gray,flex:1}}>{f.name}</div>
+                    {f.datatype_issue && <span style={{ fontSize:9, background:M.yellowPale, color:M.yellowDark, border:`1px solid ${M.yellow}`, borderRadius:3, padding:"1px 5px", fontWeight:700 }}>DATATYPE</span>}
+                    <div style={{fontSize:10,fontFamily:"monospace",color:M.gray6}}>{f.type}</div>
+                    {onMark&&f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
+                  </div>
+                ))}
+                {spec.more_failures > 0 && <div style={{fontSize:10,color:M.gray6,marginTop:6}}>+ {spec.more_failures} flere</div>}
+              </>
+            );
+          })()}
 
           <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:10}}>
             {canMark && spec.failures.some(f => f.guid) && (

@@ -142,7 +142,14 @@ for spec in specs.specifications:
                 krav = "Skal fylles ut"
             if data_type:
                 krav += f" | Datatype: {data_type}"
-            reqs.append({"type": "Property", "pset": pset, "name": prop, "enum_values": enum_vals, "pattern": pattern, "bounds": bounds, "data_type": data_type, "instructions": instructions, "cardinality": card, "krav_tekst": krav, "description": f"{pset}.{prop}"})
+            _req_failed = list(getattr(req, 'failed_entities', set()) or set())
+            _req_failing = []
+            for _e in _req_failed:
+                try:
+                    _req_failing.append({"guid": getattr(_e, "GlobalId", None), "name": getattr(_e, "Name", None) or "(uten navn)", "type": _e.is_a()})
+                except:
+                    pass
+            reqs.append({"type": "Property", "pset": pset, "name": prop, "enum_values": enum_vals, "pattern": pattern, "bounds": bounds, "data_type": data_type, "instructions": instructions, "cardinality": card, "krav_tekst": krav, "description": f"{pset}.{prop}", "failing": _req_failing})
 
     appl = {"pset": None, "objekttype": None, "entity": None}
     for facet in spec.applicability:
