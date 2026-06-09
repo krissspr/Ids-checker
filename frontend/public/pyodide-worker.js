@@ -285,6 +285,59 @@ result_specs.append({
     "more_failures": max(0, _ev_failed - 50),
 })
 
+# ── Egen validering: finn IfcElement-objekter uten Prosessdata-pset ──
+_ev2_missing = []
+_ev2_total = 0
+for _ent in ifc_model.by_type("IfcElement"):
+    try:
+        if _ent.is_a() in _EV_SKIP_TYPES:
+            continue
+        _ev2_guid = getattr(_ent, "GlobalId", None)
+        if _ev2_guid is None:
+            continue
+        _ev2_total += 1
+        if "Prosessdata" not in _pset_name_map.get(_ent.id(), set()):
+            _ev2_missing.append({
+                "guid": _ev2_guid,
+                "type": _ent.is_a(),
+                "name": getattr(_ent, "Name", None) or "(uten navn)",
+                "datatype_issue": False,
+                "reason": "",
+            })
+    except Exception:
+        pass
+
+_ev2_failed = len(_ev2_missing)
+_ev2_passed = _ev2_total - _ev2_failed
+result_specs.append({
+    "name": "Egen validering - Inneholder ikke Prosessdata",
+    "status": "passed" if _ev2_failed == 0 else "failed",
+    "applicability": "Alle konstruksjonselementer (IfcElement)",
+    "applicability_detail": {"pset": None, "objekttype": None, "entity": "IfcElement"},
+    "requirement": "Egenskapssett 'Prosessdata' m\xe5 eksistere",
+    "requirements_detail": [{
+        "type": "Property",
+        "pset": "Prosessdata",
+        "name": "(eksistens)",
+        "enum_values": [],
+        "pattern": None,
+        "bounds": {},
+        "data_type": "",
+        "instructions": "",
+        "cardinality": "required",
+        "krav_tekst": "Egenskapssett Prosessdata m\xe5 eksistere p\xe5 objektet",
+        "description": "Prosessdata",
+        "failing": _ev2_missing[:50],
+    }],
+    "failed_req_names": ["Prosessdata"] if _ev2_missing else [],
+    "passed": _ev2_passed,
+    "failed": _ev2_failed,
+    "total": _ev2_total,
+    "no_objects": _ev2_total == 0,
+    "failures": _ev2_missing[:50],
+    "more_failures": max(0, _ev2_failed - 50),
+})
+
 total_passed = sum(1 for s in result_specs if s["status"] == "passed")
 total_failed = sum(1 for s in result_specs if s["status"] == "failed")
 json.dumps({"summary": {"passed": total_passed, "failed": total_failed, "total": total_passed + total_failed}, "specifications": result_specs})
