@@ -17,17 +17,20 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
 
         for entity in spec.failed_entities:
             try:
-                name = getattr(entity, 'Name', None) or "(uten navn)"
-                guid = getattr(entity, 'GlobalId', None)
                 ifc_type = entity.is_a() if hasattr(entity, 'is_a') else "ukjent"
             except Exception:
-                name = str(entity)
-                guid = None
                 ifc_type = "ukjent"
 
             if ifc_type in _EXCLUDED_IFC_TYPES:
                 excluded_count += 1
                 continue
+
+            try:
+                name = getattr(entity, 'Name', None) or "(uten navn)"
+                guid = getattr(entity, 'GlobalId', None)
+            except Exception:
+                name = str(entity)
+                guid = None
 
             # Detect datatype failures by checking all requirement facets
             datatype_issue = False
