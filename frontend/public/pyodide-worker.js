@@ -47,6 +47,8 @@ ifc_model = ifcopenshell.open("/model.ifc")
 specs = ids.open("/rules.ids")
 specs.validate(ifc_model)
 
+_EXCLUDED_IFC_TYPES = frozenset({"IfcPresentationLayerAssignment"})
+
 # DEBUG: print per-requirement failures to find which req actually fires
 for spec in specs.specifications:
     if spec.status:
@@ -65,15 +67,26 @@ for spec in specs.specifications:
 result_specs = []
 for spec in specs.specifications:
     failing = []
+    excluded_count = 0
     for entity in spec.failed_entities:
         try:
-            name = getattr(entity, "Name", None) or "(uten navn)"
-            guid = getattr(entity, "GlobalId", None)
             ifc_type = entity.is_a()
         except:
-            name = str(entity)
-            guid = None
             ifc_type = "ukjent"
+
+        try:
+            guid = getattr(entity, "GlobalId", None)
+        except:
+            guid = None
+
+        if ifc_type in _EXCLUDED_IFC_TYPES or guid is None:
+            excluded_count += 1
+            continue
+
+        try:
+            name = getattr(entity, "Name", None) or "(uten navn)"
+        except:
+            name = str(entity)
 
         datatype_issue = False
         for req in spec.requirements:
@@ -86,7 +99,7 @@ for spec in specs.specifications:
         failing.append({"guid": guid, "type": ifc_type, "name": name, "datatype_issue": datatype_issue, "reason": ""})
 
     passed = len(spec.passed_entities)
-    failed = len(spec.failed_entities)
+    failed = len(spec.failed_entities) - excluded_count
     total = passed + failed
 
     reqs = []
@@ -155,7 +168,11 @@ for spec in specs.specifications:
             _req_failing = []
             for _e in _req_ents:
                 try:
-                    _req_failing.append({"guid": getattr(_e, "GlobalId", None), "name": getattr(_e, "Name", None) or "(uten navn)", "type": _e.is_a()})
+                    _e_type = _e.is_a()
+                    _e_guid = getattr(_e, "GlobalId", None)
+                    if _e_type in _EXCLUDED_IFC_TYPES or _e_guid is None:
+                        continue
+                    _req_failing.append({"guid": _e_guid, "name": getattr(_e, "Name", None) or "(uten navn)", "type": _e_type})
                 except Exception:
                     pass
             reqs.append({"type": "Property", "pset": pset, "name": prop, "enum_values": enum_vals, "pattern": pattern, "bounds": bounds, "data_type": data_type, "instructions": instructions, "cardinality": card, "krav_tekst": krav, "description": f"{pset}.{prop}", "failing": _req_failing})
@@ -173,7 +190,7 @@ for spec in specs.specifications:
 
     result_specs.append({
         "name": spec.name,
-        "status": "passed" if spec.status else "failed",
+        "status": "passed" if failed == 0 else "failed",
         "applicability": str(spec.name),
         "applicability_detail": appl,
         "requirement": "",
