@@ -26,8 +26,6 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
             except Exception:
                 guid = None
 
-            print(f"  failed entity: type={ifc_type} guid={guid}", flush=True)
-
             if ifc_type in _EXCLUDED_IFC_TYPES or guid is None:
                 excluded_count += 1
                 continue
@@ -53,7 +51,6 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
 
                     for reason in reasons:
                         r = str(reason)
-                        print(f"  reason: {r[:150]}", flush=True)
                         if any(kw in r.lower() for kw in [
                             "datatype", "data type", "ifclabel", "ifctext",
                             "ifcinteger", "ifcreal", "ifcboolean", "type mismatch",
@@ -62,8 +59,8 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
                             datatype_issue = True
                             reason_text = r[:200]
                             break
-            except Exception as e:
-                print(f"  datatype check error: {e}", flush=True)
+            except Exception:
+                pass
 
             failing_instances.append({
                 "guid": guid,
