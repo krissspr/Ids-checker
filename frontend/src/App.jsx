@@ -2687,7 +2687,7 @@ export default function IDSChecker() {
                 <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 0",color:M.gray6,fontSize:12}}><Icon.Spinner/> Henter modeller…</div>
               ) : loadedModels.length > 0 ? (
                 <div style={{ background:M.bluePale, border:`1px solid ${M.blue}40`, borderRadius:4, padding:10 }}>
-                  <div style={{ fontSize:10, fontWeight:700, color:M.blue, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>Aktiv modell i viewer</div>
+                  <div style={{ fontSize:10, fontWeight:700, color:M.blue, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>Aktiv modell i view</div>
                   {loadedModels.map(m => (
                     <div key={m.modelId} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:M.gray }}>
                       <Icon.File color={M.blue}/>
@@ -2701,11 +2701,6 @@ export default function IDSChecker() {
               ) : (
                 <div style={{ fontSize:11, color:M.gray6 }}>Ingen modell funnet i viewer</div>
               )}
-              {/* Explain limitation */}
-              <div style={{background:M.greenPale, border:`1px solid ${M.green}`, borderRadius:4, padding:10, fontSize:11, color:M.gray8, lineHeight:1.6}}>
-                <strong>✓ IDS-validering støttes direkte fra viewer</strong><br/>
-                Filen lastes ned fra TC til nettleseren og valideres lokalt – ingen data sendes til Railway.
-              </div>
             </div>
           ) : (
             <UploadZone file={uploadedIfc} onFile={setUploadedIfc} accept=".ifc" label=".ifc-fil"/>
