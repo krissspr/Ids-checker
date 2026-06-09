@@ -144,10 +144,10 @@ for spec in specs.specifications:
                 krav = f"Skal v\xe6re en av f\xf8lgende verdier: [{', '.join(str(v) for v in enum_vals)}]"
             elif bounds:
                 parts = []
-                if "minExclusive" in bounds: parts.append(f"St\xf8rre enn {bounds['minExclusive']}")
-                if "minInclusive" in bounds: parts.append(f"Minst {bounds['minInclusive']}")
-                if "maxExclusive" in bounds: parts.append(f"Mindre enn {bounds['maxExclusive']}")
-                if "maxInclusive" in bounds: parts.append(f"Maks {bounds['maxInclusive']}")
+                if "minExclusive" in bounds: parts.append(f"M\xe5 v\xe6re st\xf8rre enn {bounds['minExclusive']}")
+                if "minInclusive" in bounds: parts.append(f"M\xe5 v\xe6re minst {bounds['minInclusive']}")
+                if "maxExclusive" in bounds: parts.append(f"M\xe5 v\xe6re mindre enn {bounds['maxExclusive']}")
+                if "maxInclusive" in bounds: parts.append(f"M\xe5 v\xe6re maks {bounds['maxInclusive']}")
                 krav = ", ".join(parts) if parts else "Skal fylles ut"
             elif pattern:
                 krav = "Skal fylles ut"
