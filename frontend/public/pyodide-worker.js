@@ -152,7 +152,19 @@ for spec in specs.specifications:
             elif pattern:
                 krav = "Skal fylles ut"
             else:
-                krav = "Skal fylles ut"
+                simple_val = None
+                if val_obj is not None:
+                    if isinstance(val_obj, str):
+                        simple_val = val_obj
+                    elif hasattr(val_obj, "simpleValue") and val_obj.simpleValue:
+                        simple_val = str(val_obj.simpleValue)
+                    elif hasattr(val_obj, "wrappedValue") and val_obj.wrappedValue:
+                        simple_val = str(val_obj.wrappedValue)
+                    else:
+                        s = str(val_obj)
+                        if s and s not in ("None", "") and not any(c in s for c in ".+*?[]{}()\\|^$"):
+                            simple_val = s
+                krav = f"Skal v\xe6re {simple_val}" if simple_val else "Skal fylles ut"
             if data_type:
                 krav += f" | Datatype: {data_type}"
             _req_ents = list(getattr(req, 'failed_entities', set()) or set())
