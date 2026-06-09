@@ -1926,6 +1926,11 @@ def cast_value(value, data_type):
         return int(value)
     if dt == "IfcBoolean":
         return value.lower() in ("true","1","ja","yes")
+    if dt in ("IfcText", "IfcIdentifier"):
+        try:
+            return model.create_entity(dt, str(value))
+        except Exception:
+            pass
     return value
 
 def apply_filter_pe(filt, candidates):
