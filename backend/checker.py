@@ -1,6 +1,8 @@
 import ifcopenshell
 from ifctester import ids
 
+_EXCLUDED_IFC_TYPES = frozenset({"IfcPresentationLayerAssignment"})
+
 
 def run_ids_check(ifc_path: str, ids_path: str) -> dict:
     ifc_model = ifcopenshell.open(ifc_path)
@@ -11,6 +13,7 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
 
     for spec in specs.specifications:
         failing_instances = []
+        excluded_count = 0
 
         for entity in spec.failed_entities:
             try:
@@ -21,6 +24,10 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
                 name = str(entity)
                 guid = None
                 ifc_type = "ukjent"
+
+            if ifc_type in _EXCLUDED_IFC_TYPES:
+                excluded_count += 1
+                continue
 
             # Detect datatype failures by checking all requirement facets
             datatype_issue = False
@@ -59,7 +66,7 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
             })
 
         passed = len(spec.passed_entities)
-        failed = len(spec.failed_entities)
+        failed = len(spec.failed_entities) - excluded_count
         total = passed + failed
 
         # Detect "no objects found" – spec applies to nothing
@@ -78,7 +85,7 @@ def run_ids_check(ifc_path: str, ids_path: str) -> dict:
 
         result_specs.append({
             "name": spec.name,
-            "status": "passed" if spec.status else "failed",
+            "status": "passed" if failed == 0 else "failed",
             "applicability": _describe_applicability(spec),
             "applicability_detail": applicability_detail,
             "requirement": _describe_requirements(spec),
@@ -111,10 +118,13 @@ def _req_failing(req) -> list:
     result = []
     for entity in failed:
         try:
+            ifc_type = entity.is_a() if hasattr(entity, "is_a") else "ukjent"
+            if ifc_type in _EXCLUDED_IFC_TYPES:
+                continue
             result.append({
                 "guid": getattr(entity, "GlobalId", None),
                 "name": getattr(entity, "Name", None) or "(uten navn)",
-                "type": entity.is_a() if hasattr(entity, "is_a") else "ukjent",
+                "type": ifc_type,
             })
         except Exception:
             pass
