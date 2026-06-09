@@ -219,8 +219,9 @@ _EV_SKIP_TYPES = frozenset({
     "IfcOpeningElement", "IfcVoidingFeature", "IfcSurfaceFeature", "IfcProjectionElement",
 })
 
-# Bygg oppslagskart pset-navn per entitet (raskere enn get_psets() per objekt)
+# Bygg oppslagskart pset-navn per entitet + sett for Objektdata.Objekttype fylt ut
 _pset_name_map = {}
+_has_objekttype = set()  # entity-IDer med Objektdata.Objekttype fylt ut
 for _rel in ifc_model.by_type("IfcRelDefinesByProperties"):
     try:
         _pdef = _rel.RelatingPropertyDefinition
@@ -230,6 +231,16 @@ for _rel in ifc_model.by_type("IfcRelDefinesByProperties"):
                 if _eid not in _pset_name_map:
                     _pset_name_map[_eid] = set()
                 _pset_name_map[_eid].add(_pdef.Name)
+            if _pdef.Name == "Objektdata":
+                for _prop in (_pdef.HasProperties or []):
+                    try:
+                        if _prop.Name == "Objekttype":
+                            _val = getattr(getattr(_prop, "NominalValue", None), "wrappedValue", None)
+                            if _val and str(_val).strip():
+                                for _obj in _rel.RelatedObjects:
+                                    _has_objekttype.add(_obj.id())
+                    except Exception:
+                        pass
     except Exception:
         pass
 
@@ -243,7 +254,7 @@ for _ent in ifc_model.by_type("IfcElement"):
         if _ev_guid is None:
             continue
         _ev_total += 1
-        if "Objektdata" not in _pset_name_map.get(_ent.id(), set()):
+        if _ent.id() not in _has_objekttype:
             _ev_missing.append({
                 "guid": _ev_guid,
                 "type": _ent.is_a(),
@@ -261,7 +272,7 @@ result_specs.append({
     "status": "passed" if _ev_failed == 0 else "failed",
     "applicability": "Alle konstruksjonselementer (IfcElement)",
     "applicability_detail": {"pset": None, "objekttype": None, "entity": "IfcElement"},
-    "requirement": "Egenskapssett 'Objektdata' m\xe5 eksistere",
+    "requirement": "Egenskapssett 'Objektdata' m\xe5 eksistere og 'Objekttype' m\xe5 v\xe6re fylt ut",
     "requirements_detail": [{
         "type": "Property",
         "pset": "Objektdata",
@@ -272,7 +283,7 @@ result_specs.append({
         "data_type": "",
         "instructions": "",
         "cardinality": "required",
-        "krav_tekst": "Egenskapssett Objektdata m\xe5 eksistere p\xe5 objektet",
+        "krav_tekst": "Egenskapssett Objektdata m\xe5 eksistere og Objekttype m\xe5 v\xe6re fylt ut",
         "description": "Objektdata",
         "failing": _ev_missing[:50],
     }],
