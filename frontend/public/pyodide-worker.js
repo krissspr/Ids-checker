@@ -219,9 +219,10 @@ _EV_SKIP_TYPES = frozenset({
     "IfcOpeningElement", "IfcVoidingFeature", "IfcSurfaceFeature", "IfcProjectionElement",
 })
 
-# Bygg oppslagskart pset-navn per entitet + sett for Objektdata.Objekttype fylt ut
+# Bygg oppslagskart pset-navn + sett for Objektdata-pset og Objektdata.Objekttype
 _pset_name_map = {}
-_has_objekttype = set()  # entity-IDer med Objektdata.Objekttype fylt ut
+_has_objektdata_pset = set()  # entity-IDer som har Objektdata-pset
+_has_objekttype = set()       # entity-IDer med Objektdata.Objekttype fylt ut
 for _rel in ifc_model.by_type("IfcRelDefinesByProperties"):
     try:
         _pdef = _rel.RelatingPropertyDefinition
@@ -232,6 +233,8 @@ for _rel in ifc_model.by_type("IfcRelDefinesByProperties"):
                     _pset_name_map[_eid] = set()
                 _pset_name_map[_eid].add(_pdef.Name)
             if _pdef.Name == "Objektdata":
+                for _obj in _rel.RelatedObjects:
+                    _has_objektdata_pset.add(_obj.id())
                 for _prop in (_pdef.HasProperties or []):
                     try:
                         if _prop.Name == "Objekttype":
@@ -244,7 +247,8 @@ for _rel in ifc_model.by_type("IfcRelDefinesByProperties"):
     except Exception:
         pass
 
-_ev_missing = []
+_ev_no_pset = []       # mangler Objektdata-pset helt
+_ev_no_objtype = []    # har Objektdata-pset, men Objekttype mangler/er tom
 _ev_total = 0
 for _ent in ifc_model.by_type("IfcElement"):
     try:
@@ -254,47 +258,56 @@ for _ent in ifc_model.by_type("IfcElement"):
         if _ev_guid is None:
             continue
         _ev_total += 1
-        if _ent.id() not in _has_objekttype:
-            _ev_missing.append({
-                "guid": _ev_guid,
-                "type": _ent.is_a(),
-                "name": getattr(_ent, "Name", None) or "(uten navn)",
-                "datatype_issue": False,
-                "reason": "",
-            })
+        _ev_row = {
+            "guid": _ev_guid,
+            "type": _ent.is_a(),
+            "name": getattr(_ent, "Name", None) or "(uten navn)",
+            "datatype_issue": False,
+            "reason": "",
+        }
+        if _ent.id() not in _has_objektdata_pset:
+            _ev_no_pset.append(_ev_row)
+        elif _ent.id() not in _has_objekttype:
+            _ev_no_objtype.append(_ev_row)
     except Exception:
         pass
 
-_ev_failed = len(_ev_missing)
-_ev_passed = _ev_total - _ev_failed
-result_specs.append({
-    "name": "Egen validering - Inneholder ikke Objektdata",
-    "status": "passed" if _ev_failed == 0 else "failed",
-    "applicability": "Alle konstruksjonselementer (IfcElement)",
-    "applicability_detail": {"pset": None, "objekttype": None, "entity": "IfcElement"},
-    "requirement": "Egenskapssett 'Objektdata' m\xe5 eksistere og 'Objekttype' m\xe5 v\xe6re fylt ut",
-    "requirements_detail": [{
-        "type": "Property",
-        "pset": "Objektdata",
-        "name": "(eksistens)",
-        "enum_values": [],
-        "pattern": None,
-        "bounds": {},
-        "data_type": "",
-        "instructions": "",
-        "cardinality": "required",
-        "krav_tekst": "Egenskapssett Objektdata m\xe5 eksistere og Objekttype m\xe5 v\xe6re fylt ut",
-        "description": "Objektdata",
-        "failing": _ev_missing[:50],
-    }],
-    "failed_req_names": ["Objektdata"] if _ev_missing else [],
-    "passed": _ev_passed,
-    "failed": _ev_failed,
-    "total": _ev_total,
-    "no_objects": _ev_total == 0,
-    "failures": _ev_missing[:50],
-    "more_failures": max(0, _ev_failed - 50),
-})
+def _ev_spec(name, req_txt, krav_txt, missing, total):
+    failed = len(missing)
+    return {
+        "name": name,
+        "status": "passed" if failed == 0 else "failed",
+        "applicability": "Alle konstruksjonselementer (IfcElement)",
+        "applicability_detail": {"pset": None, "objekttype": None, "entity": "IfcElement"},
+        "requirement": req_txt,
+        "requirements_detail": [{
+            "type": "Property", "pset": "Objektdata", "name": "(eksistens)",
+            "enum_values": [], "pattern": None, "bounds": {}, "data_type": "",
+            "instructions": "", "cardinality": "required",
+            "krav_tekst": krav_txt, "description": "Objektdata",
+            "failing": missing[:50],
+        }],
+        "failed_req_names": ["Objektdata"] if missing else [],
+        "passed": total - failed,
+        "failed": failed,
+        "total": total,
+        "no_objects": total == 0,
+        "failures": missing[:50],
+        "more_failures": max(0, failed - 50),
+    }
+
+result_specs.append(_ev_spec(
+    "Egen validering - Mangler egenskapssett Objektdata",
+    "Egenskapssett 'Objektdata' m\xe5 eksistere",
+    "Egenskapssett Objektdata m\xe5 eksistere p\xe5 objektet",
+    _ev_no_pset, _ev_total,
+))
+result_specs.append(_ev_spec(
+    "Egen validering - Mangler Objekttype i Objektdata",
+    "Objektdata.Objekttype m\xe5 v\xe6re fylt ut",
+    "Egenskapen Objekttype i egenskapssett Objektdata m\xe5 v\xe6re fylt ut",
+    _ev_no_objtype, _ev_total,
+))
 
 # ── Egen validering: finn IfcElement-objekter uten Prosessdata-pset ──
 _ev2_missing = []
