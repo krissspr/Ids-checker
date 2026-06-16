@@ -1,0 +1,13 @@
+# Sensitive / internal docs — never commit
+TC_extension.md
+
+# Dependencies
+frontend/node_modules/
+
+# Build output
+frontend/build/
+
+# Local env files
+.env
+.env.local
+.env.*.local
