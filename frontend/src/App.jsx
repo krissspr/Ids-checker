@@ -897,15 +897,9 @@ function TodoButton({ spec, onCreateTodo, tc }) {
     if (!open && tc && members.length === 0) {
       setLoadingMembers(true);
       try {
-        const token = tc.getAccessToken();
-        const project = await tc.api.project.getCurrentProject();
-        const region = project?.location === "europe" ? "app21" : "app";
-        const res = await fetch(`${API_BASE}/project-members?tc_project_id=${project.id}&tc_access_token=${token}&tc_region=${region}`);
-        if (res.ok) {
-          const data = await res.json();
-          setMembers(data.members || []);
-          log.ok("Members loaded:", data.members?.length);
-        }
+        const memberList = await tc.api.project.getMembers();
+        setMembers(memberList || []);
+        log.ok("Members loaded:", memberList?.length);
       } catch (e) {
         log.warn("Could not load members:", e.message);
       } finally {
@@ -1091,14 +1085,9 @@ function TopicButton({ spec, onCreateTopic, tc }) {
     if (!open && tc && members.length === 0) {
       setLoadingMembers(true);
       try {
-        const token = tc.getAccessToken();
-        const project = await tc.api.project.getCurrentProject();
-        const region = project?.location === "europe" ? "app21" : "app";
-        const res = await fetch(`${API_BASE}/project-members?tc_project_id=${project.id}&tc_access_token=${token}&tc_region=${region}`);
-        if (res.ok) {
-          const data = await res.json();
-          setMembers(data.members || []);
-        }
+        const memberList = await tc.api.project.getMembers();
+        setMembers(memberList || []);
+        log.ok("Members loaded:", memberList?.length);
       } catch (e) {
         log.warn("Could not load members:", e.message);
       } finally {
