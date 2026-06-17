@@ -1,5 +1,8 @@
 # Sensitive / internal docs — never commit
 TC_extension.md
+ARKITEKT.md
+UTVIKLER.md
+Mulige_Endringer.md
 
 # Dependencies
 frontend/node_modules/
