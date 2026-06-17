@@ -938,7 +938,7 @@ function TodoButton({ spec, onCreateTodo, tc }) {
         onClick={handleOpen}
         style={{ padding:"7px 10px", borderRadius:4, border:`1px solid ${M.blue}40`, background:open?M.bluePale:M.white, color:M.blueDark, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6, width:"100%", transition:"all 0.15s" }}
       >
-        📋 {open ? "Lukk ToDo-editor" : "Lag ToDo i TC"}
+        📋 {open ? "Lukk ToDo-editor" : "Lag ToDo"}
       </button>
 
       {open && (
@@ -1010,7 +1010,7 @@ function TodoButton({ spec, onCreateTodo, tc }) {
           >
             {state === "creating"
               ? <><Icon.Spinner color={M.white}/> Oppretter ToDo…</>
-              : <>📋 Opprett ToDo i TC</>
+              : <>📋 Opprett ToDo</>
             }
           </button>
         </div>
@@ -1306,7 +1306,7 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
           <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:10}}>
             {canMark && spec.failures.some(f => f.guid) && (
               <button onClick={handleMark} disabled={marking} style={{ padding:"7px 10px", borderRadius:4, border:`1px solid ${M.blue}`, background:marking?M.bluePale:M.white, color:M.blueDark, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:marking?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                {marking ? <><Icon.Spinner color={M.blue}/> Markerer…</> : <><Icon.Mark/> Marker {spec.failures.length} objekter i TC</>}
+                {marking ? <><Icon.Spinner color={M.blue}/> Markerer…</> : <><Icon.Mark/> Marker {spec.failures.length} objekter</>}
               </button>
             )}
             {onCreateTodo && (
