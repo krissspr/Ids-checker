@@ -1320,11 +1320,6 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
                 {marking ? <><Icon.Spinner color={M.blue}/> Markerer…</> : <><Icon.Mark/> Marker {spec.failures.length} objekter i TC</>}
               </button>
             )}
-            {!passed && hasEditableReqs && (
-              <button onClick={() => onEditProps(spec)} style={{ padding:"7px 10px", borderRadius:4, border:`1px solid ${M.yellowDark}`, background:M.yellowPale, color:M.gray9, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                <Icon.Edit/> Oppdater egenskaper
-              </button>
-            )}
             {onCreateTodo && (
               <TodoButton spec={spec} onCreateTodo={onCreateTodo} tc={tc}/>
             )}
@@ -1363,14 +1358,6 @@ function HomePage({ onSelect, tc, devMode }) {
       color: "#e08c00",
       colorPale: M.yellowPale,
     },
-    {
-      id: "download",
-      icon: "↓",
-      title: "Last ned",
-      desc: "Bla gjennom mapper i TC-prosjektet og last ned filer til din PC.",
-      color: M.green,
-      colorPale: M.greenPale,
-    },
   ];
 
   return (
@@ -1407,175 +1394,6 @@ function HomePage({ onSelect, tc, devMode }) {
       {/* Footer */}
       <div style={{ padding:"10px 16px", fontSize:10, color:M.gray6, borderTop:`1px solid ${M.gray0}`, background:M.white }}>
         Vegvesen · IDS Regelsjekker v1.0
-      </div>
-    </div>
-  );
-}
-
-// ── Download Page ─────────────────────────────────────────────────────────────
-function DownloadPage({ tc, onBack }) {
-  const [folders, setFolders] = useState([]);
-  const [currentFolder, setCurrentFolder] = useState(null);
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [path, setPath] = useState([]);
-  const [downloading, setDownloading] = useState(null);
-
-  const loadFolder = async (folderId, folderName, existingToken, existingHost) => {
-    setLoading(true);
-    try {
-      const token = existingToken || tc.getAccessToken();
-      const project = existingToken ? null : await tc.api.project.getCurrentProject();
-      const host = existingHost || (project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com");
-      const url = `https://${host}/tc/api/2.1/folders/${folderId}/items?tokenThumburl=false&sort=+name`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      log.info("loadFolder:", folderId, "→", res.status);
-      if (res.ok) {
-        const data = await res.json();
-        log.info("folder keys:", Object.keys(data));
-        log.info("folder data sample:", JSON.stringify(data).slice(0, 500));
-        const list = data.list || data.items || [];
-        setItems(list);
-        setCurrentFolder(folderId);
-        if (folderName) setPath(p => [...p, { id: folderId, name: folderName }]);
-      }
-    } catch (e) {
-      log.error("loadFolder failed:", e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadRoot = async () => {
-    setLoading(true);
-    try {
-      const token = tc.getAccessToken();
-      const project = await tc.api.project.getCurrentProject();
-      const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
-
-      // Get parentId from loaded models in viewer
-      const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
-      log.info("loadedModels:", loadedModels);
-
-      if (loadedModels?.length > 0) {
-        const fileId = loadedModels[0].id || loadedModels[0].fileId;
-        log.info("Looking up file versions:", fileId);
-
-        const fileRes = await fetch(
-          `https://${host}/tc/api/2.1/projects/${project.id}/${fileId}/versions`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        log.info("versions lookup:", fileRes.status);
-        if (fileRes.ok) {
-          const fileData = await fileRes.json();
-          const item = fileData.items?.[0];
-          log.info("file item:", JSON.stringify(item).slice(0, 300));
-          const parentId = item?.parentId;
-          const parentName = item?.path?.[item.path.length - 1]?.name || "Prosjektmappe";
-          log.info("parentId:", parentId, "parentName:", parentName);
-          if (parentId) {
-            await loadFolder(parentId, parentName, token, host);
-            return;
-          }
-        }
-      }
-
-      log.warn("No loaded models found – cannot determine folder");
-      setItems([]);
-    } catch (e) {
-      log.error("loadRoot failed:", e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const downloadFile = async (item) => {
-    setDownloading(item.id);
-    try {
-      const token = tc.getAccessToken();
-      const project = await tc.api.project.getCurrentProject();
-      const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
-      const urlRes = await fetch(
-        `https://${host}/tc/api/2.0/files/fs/${item.id}/downloadurl`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (urlRes.ok) {
-        const urlData = await urlRes.json();
-        const dlUrl = urlData.url;
-        if (dlUrl) {
-          const a = document.createElement("a");
-          a.href = dlUrl;
-          a.download = item.name;
-          a.click();
-          log.ok("Download started:", item.name);
-        }
-      } else {
-        log.warn("downloadurl failed:", urlRes.status);
-      }
-    } catch (e) {
-      log.error("downloadFile failed:", e.message);
-    } finally {
-      setDownloading(null);
-    }
-  };
-
-  useEffect(() => { if (tc) loadRoot(); }, [tc]);
-
-  const navigateTo = (idx) => {
-    const target = path[idx];
-    const newPath = path.slice(0, idx + 1);
-    setPath(newPath.slice(0, -1));
-    loadFolder(target.id, target.name);
-  };
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", height:"100%", background:M.white }}>
-      <div style={{ background:M.blueDark, padding:"12px 14px", display:"flex", alignItems:"center", gap:10 }}>
-        <button onClick={onBack} style={{ background:"none", border:"none", color:M.white, cursor:"pointer", fontSize:16, padding:0, opacity:0.8 }}>←</button>
-        <div style={{ color:M.white, fontWeight:700, fontSize:13 }}>Last ned fra TC</div>
-      </div>
-
-      {/* Breadcrumb */}
-      <div style={{ padding:"8px 12px", display:"flex", alignItems:"center", gap:4, fontSize:11, color:M.gray6, borderBottom:`1px solid ${M.gray0}`, flexWrap:"wrap" }}>
-        <span onClick={loadRoot} style={{ cursor:"pointer", color:M.blue }}>Rot</span>
-        {path.map((p, i) => (
-          <span key={p.id} style={{ display:"flex", alignItems:"center", gap:4 }}>
-            <span style={{ color:M.gray6 }}>/</span>
-            <span onClick={() => navigateTo(i)} style={{ cursor:"pointer", color:i === path.length-1 ? M.gray : M.blue }}>{p.name}</span>
-          </span>
-        ))}
-      </div>
-
-      {/* Items */}
-      <div style={{ flex:1, overflowY:"auto", padding:"6px 8px" }}>
-        {loading ? (
-          <div style={{ display:"flex", gap:8, alignItems:"center", padding:16, color:M.gray6, fontSize:12 }}><Icon.Spinner/> Laster…</div>
-        ) : items.length === 0 ? (
-          <div style={{ padding:16, fontSize:12, color:M.gray6 }}>Ingen filer her</div>
-        ) : items.map(item => {
-          const isFolder = item.type === "FOLDER";
-          const isFile = !isFolder;
-          return (
-            <div key={item.id}
-              style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 8px", borderRadius:4, cursor:isFolder?"pointer":"default", transition:"background 0.1s" }}
-              onClick={() => isFolder && loadFolder(item.id, item.name, null, null)}
-              onMouseEnter={e => { if (isFolder) e.currentTarget.style.background = M.bluePale; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-            >
-              <span style={{ fontSize:16, flexShrink:0 }}>{isFolder ? "📁" : "📄"}</span>
-              <div style={{ flex:1, fontSize:12, color:M.gray, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.name}</div>
-              {isFile && (
-                <button
-                  onClick={e => { e.stopPropagation(); downloadFile(item); }}
-                  disabled={downloading === item.id}
-                  style={{ padding:"4px 10px", borderRadius:3, border:`1px solid ${M.blue}`, background:M.white, color:M.blue, fontSize:10, fontWeight:600, cursor:"pointer", fontFamily:"inherit", flexShrink:0, display:"flex", alignItems:"center", gap:4 }}
-                >
-                  {downloading === item.id ? <><Icon.Spinner color={M.blue}/> …</> : "↓ Last ned"}
-                </button>
-              )}
-            </div>
-          );
-        })}
       </div>
     </div>
   );
@@ -2632,15 +2450,6 @@ export default function IDSChecker() {
       <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
         {globalStyle}
         <HomePage onSelect={setPage} tc={tc} devMode={devMode}/>
-      </div>
-    );
-  }
-
-  if (page === "download") {
-    return (
-      <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
-        {globalStyle}
-        <DownloadPage tc={tc} onBack={() => setPage("home")}/>
       </div>
     );
   }
