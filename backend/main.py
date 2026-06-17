@@ -240,10 +240,10 @@ async def project_members(
             f"{base_url}/projects/{tc_project_id}/members",
             headers=headers,
         )
-        print(f"Members: {res.status_code} ({len(members) if res.status_code == 200 else 'error'})", flush=True)
         if res.status_code == 200:
             data = res.json()
             members = data.get("list") or data.get("members") or (data if isinstance(data, list) else [])
+            print(f"Members: 200 ({len(members)} stk)", flush=True)
             return {"members": [
                 {
                     "id": m.get("id"),
@@ -254,6 +254,7 @@ async def project_members(
                 }
                 for m in members
             ]}
+        print(f"Members: {res.status_code} (feil)", flush=True)
         return {"members": []}
 
 

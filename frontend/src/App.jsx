@@ -471,7 +471,7 @@ function PropertyEditor({ spec, model, tc, devMode, onBack, pyUpdateProperties }
         // Fallback to Railway
         const token = tc?.getAccessToken();
         const project = await tc?.api?.project?.getCurrentProject().catch(() => null);
-        const region = project?.location === "europe" ? "app.eu" : "app";
+        const region = project?.location === "europe" ? "app21" : "app";
         const form = new FormData();
         form.append("tc_access_token", token || "");
         form.append("tc_region", region);
@@ -899,7 +899,7 @@ function TodoButton({ spec, onCreateTodo, tc }) {
       try {
         const token = tc.getAccessToken();
         const project = await tc.api.project.getCurrentProject();
-        const region = project?.location === "europe" ? "app.eu" : "app";
+        const region = project?.location === "europe" ? "app21" : "app";
         const res = await fetch(`${API_BASE}/project-members?tc_project_id=${project.id}&tc_access_token=${token}&tc_region=${region}`);
         if (res.ok) {
           const data = await res.json();
@@ -1093,7 +1093,7 @@ function TopicButton({ spec, onCreateTopic, tc }) {
       try {
         const token = tc.getAccessToken();
         const project = await tc.api.project.getCurrentProject();
-        const region = project?.location === "europe" ? "app.eu" : "app";
+        const region = project?.location === "europe" ? "app21" : "app";
         const res = await fetch(`${API_BASE}/project-members?tc_project_id=${project.id}&tc_access_token=${token}&tc_region=${region}`);
         if (res.ok) {
           const data = await res.json();
@@ -2244,7 +2244,7 @@ export default function IDSChecker() {
     try {
       const token = tc.getAccessToken();
       const project = await tc.api.project.getCurrentProject();
-      const region = project?.location === "europe" ? "app.eu" : "app";
+      const region = project?.location === "europe" ? "app21" : "app";
 
       // Step 1: Mark failing objects in viewer so view captures them
       const guids = spec.failures.map(f => f.guid).filter(Boolean);
@@ -2299,7 +2299,7 @@ export default function IDSChecker() {
     try {
       const token = tc.getAccessToken();
       const project = await tc.api.project.getCurrentProject();
-      const region = project?.location === "europe" ? "app.eu" : "app";
+      const region = project?.location === "europe" ? "app21" : "app";
 
       const guids = spec.failures.map(f => f.guid).filter(Boolean);
       if (guids.length > 0 && selectedModel) {
