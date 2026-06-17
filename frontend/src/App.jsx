@@ -1346,6 +1346,7 @@ function HomePage({ onSelect, tc, devMode }) {
       desc: "Rediger egenskaper direkte på IFC-objekter og last ned korrigert modell.",
       color: "#e08c00",
       colorPale: M.yellowPale,
+      beta: true,
     },
   ];
 
@@ -1373,7 +1374,10 @@ function HomePage({ onSelect, tc, devMode }) {
               {card.icon}
             </div>
             <div>
-              <div style={{ fontSize:13, fontWeight:700, color:M.gray, marginBottom:3 }}>{card.title}</div>
+              <div style={{ fontSize:13, fontWeight:700, color:M.gray, marginBottom:3, display:"flex", alignItems:"center", gap:6 }}>
+                {card.title}
+                {card.beta && <span style={{ fontSize:9, fontWeight:700, background:M.yellowPale, color:M.yellowDark, border:`1px solid ${M.yellowDark}60`, borderRadius:3, padding:"1px 5px", letterSpacing:"0.05em", textTransform:"uppercase" }}>Beta</span>}
+              </div>
               <div style={{ fontSize:11, color:M.gray6, lineHeight:1.5 }}>{card.desc}</div>
             </div>
           </button>
@@ -1886,6 +1890,7 @@ json.dumps({"rules": results, "total": sum(r["count"] for r in results)})
       <div style={{ background:M.blueDark, padding:"10px 14px", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
         <button onClick={onBack} style={{ background:"none", border:"none", color:M.white, cursor:"pointer", fontSize:18, padding:0, opacity:0.8, lineHeight:1 }}>←</button>
         <div style={{ color:M.white, fontWeight:700, fontSize:13 }}>Property Editor</div>
+        <span style={{ fontSize:9, fontWeight:700, background:M.yellow, color:M.gray, borderRadius:3, padding:"2px 6px", letterSpacing:"0.05em", textTransform:"uppercase" }}>Beta</span>
       </div>
 
       <div style={{ flex:1, overflow:"auto", padding:14, display:"flex", flexDirection:"column", gap:14 }}>

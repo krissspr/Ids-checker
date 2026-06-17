@@ -28,7 +28,7 @@ ids-checker/
 
 - **IDS Validering** — valider IFC-modell mot IDS-regelsett, se resultater per spesifikasjon og objekt, marker feilede objekter i TC 3D-viewer
 - **BCF Topics og To-Do** — opprett saker i TC direkte fra valideringsresultater, tildel til prosjektmedlemmer
-- **Property Editor** — rediger IFC-egenskaper og last opp korrigert modell til TC
+- **Property Editor** *(Beta — under utvikling)* — rediger IFC-egenskaper og last opp korrigert modell til TC
 
 ---
 
