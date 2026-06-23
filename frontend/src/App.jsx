@@ -1457,7 +1457,7 @@ function HomePage({ onSelect, tc, devMode }) {
 
       {/* Footer */}
       <div style={{ padding:"10px 16px", fontSize:10, color:M.gray6, borderTop:`1px solid ${M.gray0}`, background:M.white }}>
-        Vegvesen · IDS Regelsjekker v1.0
+        IDS Regelsjekker v1.0
       </div>
     </div>
   );
