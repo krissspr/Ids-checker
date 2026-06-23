@@ -826,13 +826,15 @@ async function uploadFileToTC(tc, fileBytes, filename, folderId) {
 }
 
 // ── ToDo editor (inline in SpecRow) ──────────────────────────────────────────
-function TodoButton({ spec, onCreateTodo, tc }) {
+function TodoButton({ spec, onCreateTodo, tc, selectedGuids }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState("idle");
   const [message, setMessage] = useState("");
   const [members, setMembers] = useState([]);
   const [assigneeId, setAssigneeId] = useState("");
   const [loadingMembers, setLoadingMembers] = useState(false);
+
+  const linkedGuids = selectedGuids?.length ? selectedGuids : spec.failures.map(f => f.guid).filter(Boolean);
 
   // Pre-fill with spec data, user can edit
   const defaultTitle = `IDS: ${spec.name}`;
@@ -911,7 +913,7 @@ function TodoButton({ spec, onCreateTodo, tc }) {
   const handle = async () => {
     setState("creating");
     try {
-      const result = await onCreateTodo(spec, title, desc, assigneeId);
+      const result = await onCreateTodo(spec, title, desc, assigneeId, linkedGuids);
       if (result?.created > 0) {
         setState("done");
         setMessage(`✓ ToDo opprettet i TC`);
@@ -992,7 +994,7 @@ function TodoButton({ spec, onCreateTodo, tc }) {
 
           {/* Object link info */}
           <div style={{ fontSize:10, color:M.gray6 }}>
-            🔗 {spec.failures.filter(f => f.guid).length} objekter kobles til ToDo-en
+            🔗 {linkedGuids.length} objekter kobles til ToDo-en
           </div>
 
           {/* Error */}
@@ -1020,13 +1022,15 @@ function TodoButton({ spec, onCreateTodo, tc }) {
 }
 
 // ── Topic button (inline in SpecRow) ─────────────────────────────────────────
-function TopicButton({ spec, onCreateTopic, tc }) {
+function TopicButton({ spec, onCreateTopic, tc, selectedGuids }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState("idle");
   const [message, setMessage] = useState("");
   const [members, setMembers] = useState([]);
   const [assigneeId, setAssigneeId] = useState("");
   const [loadingMembers, setLoadingMembers] = useState(false);
+
+  const linkedGuids = selectedGuids?.length ? selectedGuids : spec.failures.map(f => f.guid).filter(Boolean);
 
   const defaultTitle = `IDS: ${spec.name}`;
 
@@ -1099,7 +1103,7 @@ function TopicButton({ spec, onCreateTopic, tc }) {
   const handle = async () => {
     setState("creating");
     try {
-      const result = await onCreateTopic(spec, title, desc, assigneeId);
+      const result = await onCreateTopic(spec, title, desc, assigneeId, linkedGuids);
       if (result?.created > 0) {
         setState("done");
         setMessage(`✓ Topic opprettet i TC`);
@@ -1167,7 +1171,7 @@ function TopicButton({ spec, onCreateTopic, tc }) {
           </div>
 
           <div style={{ fontSize:10, color:M.gray6 }}>
-            🔗 {spec.failures.filter(f => f.guid).length} objekter kobles til Topic-en
+            🔗 {linkedGuids.length} objekter kobles til Topic-en
           </div>
 
           {state === "error" && (
@@ -1195,8 +1199,18 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
   const [markResult, setMarkResult] = useState(null);
   const [expandedReqs, setExpandedReqs] = useState(() => new Set());
   const [expandedFlat, setExpandedFlat] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedGuids, setSelectedGuids] = useState(() => new Set());
   const pct = spec.total > 0 ? Math.round((spec.passed / spec.total) * 100) : 100;
   const passed = spec.status === "passed";
+
+  const toggleSelected = (guid) => {
+    setSelectedGuids(prev => {
+      const next = new Set(prev);
+      if (next.has(guid)) next.delete(guid); else next.add(guid);
+      return next;
+    });
+  };
 
   const handleMark = async () => {
     if (!onMark || marking) return;
@@ -1204,6 +1218,15 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
     setMarkResult(null);
     const guids = spec.failures.map(f => f.guid).filter(Boolean);
     const result = await onMark(guids);
+    setMarkResult(result);
+    setMarking(false);
+  };
+
+  const handleMarkSelected = async () => {
+    if (!onMark || marking || selectedGuids.size === 0) return;
+    setMarking(true);
+    setMarkResult(null);
+    const result = await onMark(Array.from(selectedGuids));
     setMarkResult(result);
     setMarking(false);
   };
@@ -1270,15 +1293,18 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
                         <>
                           {visible.map((f, fi) => (
                             <div key={fi}
-                              onClick={() => onMark && f.guid && onMark([f.guid])}
-                              style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 6px", paddingLeft:12, borderRadius:3, borderBottom:fi < visible.length - 1 ? `1px solid ${M.grayLight}` : "none", cursor:onMark&&f.guid?"pointer":"default", transition:"background 0.1s" }}
-                              onMouseEnter={e => { if (onMark&&f.guid) e.currentTarget.style.background = M.bluePale; }}
+                              onClick={() => { if (selectMode) { f.guid && toggleSelected(f.guid); } else { onMark && f.guid && onMark([f.guid]); } }}
+                              style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 6px", paddingLeft:12, borderRadius:3, borderBottom:fi < visible.length - 1 ? `1px solid ${M.grayLight}` : "none", cursor:(selectMode||onMark)&&f.guid?"pointer":"default", transition:"background 0.1s" }}
+                              onMouseEnter={e => { if ((selectMode||onMark)&&f.guid) e.currentTarget.style.background = M.bluePale; }}
                               onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                             >
+                              {selectMode && f.guid && (
+                                <input type="checkbox" checked={selectedGuids.has(f.guid)} onChange={() => toggleSelected(f.guid)} onClick={e => e.stopPropagation()} style={{flexShrink:0, cursor:"pointer"}}/>
+                              )}
                               <div style={{width:4,height:4,borderRadius:"50%",background:M.red,flexShrink:0,marginTop:1}}/>
                               <div style={{fontSize:11,color:M.gray,flex:1}}>{f.name}</div>
                               <div style={{fontSize:10,fontFamily:"monospace",color:M.gray6}}>{f.type}</div>
-                              {onMark&&f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
+                              {!selectMode && onMark&&f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
                             </div>
                           ))}
                           {!reqExpanded && failing.length > MAX_VISIBLE_FAILURES && (
@@ -1306,16 +1332,19 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
                 </div>
                 {visibleFailures.map((f, i) => (
                   <div key={i}
-                    onClick={() => onMark && f.guid && onMark([f.guid])}
-                    style={{ display:"flex", gap:8, alignItems:"center", padding:"5px 6px", borderRadius:3, borderBottom:i<visibleFailures.length-1?`1px solid ${M.grayLight}`:"none", cursor:onMark&&f.guid?"pointer":"default", transition:"background 0.1s" }}
-                    onMouseEnter={e => { if (onMark&&f.guid) e.currentTarget.style.background = M.bluePale; }}
+                    onClick={() => { if (selectMode) { f.guid && toggleSelected(f.guid); } else { onMark && f.guid && onMark([f.guid]); } }}
+                    style={{ display:"flex", gap:8, alignItems:"center", padding:"5px 6px", borderRadius:3, borderBottom:i<visibleFailures.length-1?`1px solid ${M.grayLight}`:"none", cursor:(selectMode||onMark)&&f.guid?"pointer":"default", transition:"background 0.1s" }}
+                    onMouseEnter={e => { if ((selectMode||onMark)&&f.guid) e.currentTarget.style.background = M.bluePale; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                   >
+                    {selectMode && f.guid && (
+                      <input type="checkbox" checked={selectedGuids.has(f.guid)} onChange={() => toggleSelected(f.guid)} onClick={e => e.stopPropagation()} style={{flexShrink:0, cursor:"pointer"}}/>
+                    )}
                     <div style={{width:5,height:5,borderRadius:"50%",background:M.red,flexShrink:0}}/>
                     <div style={{fontSize:11,color:M.gray,flex:1}}>{f.name}</div>
                     {f.datatype_issue && <span style={{ fontSize:9, background:M.yellowPale, color:M.yellowDark, border:`1px solid ${M.yellow}`, borderRadius:3, padding:"1px 5px", fontWeight:700 }}>DATATYPE</span>}
                     <div style={{fontSize:10,fontFamily:"monospace",color:M.gray6}}>{f.type}</div>
-                    {onMark&&f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
+                    {!selectMode && onMark&&f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
                   </div>
                 ))}
                 {!expandedFlat && spec.failures.length > MAX_VISIBLE_FAILURES && (
@@ -1333,14 +1362,29 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
           <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:10}}>
             {canMark && spec.failures.some(f => f.guid) && (
               <button onClick={handleMark} disabled={marking} style={{ padding:"7px 10px", borderRadius:4, border:`1px solid ${M.blue}`, background:marking?M.bluePale:M.white, color:M.blueDark, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:marking?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                {marking ? <><Icon.Spinner color={M.blue}/> Markerer…</> : <><Icon.Mark/> Marker {spec.failures.length} objekter</>}
+                {marking ? <><Icon.Spinner color={M.blue}/> Markerer…</> : <><Icon.Mark/> Marker alle objekter som feiler ({spec.failures.length})</>}
               </button>
             )}
+            {canMark && spec.failures.some(f => f.guid) && (
+              <button onClick={() => setSelectMode(v => !v)} style={{ padding:"7px 10px", borderRadius:4, border:`1px solid ${M.gray1}`, background:selectMode?M.bluePale:M.white, color:M.blueDark, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                {selectMode ? "Lukk utvalg" : "Marker spesifikke objekt"}
+              </button>
+            )}
+            {selectedGuids.size > 0 && (
+              <div style={{display:"flex", gap:6}}>
+                <button onClick={handleMarkSelected} disabled={marking} style={{ flex:1, padding:"7px 10px", borderRadius:4, border:`1px solid ${M.blue}`, background:marking?M.bluePale:M.white, color:M.blueDark, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:marking?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                  {marking ? <><Icon.Spinner color={M.blue}/> Markerer…</> : <><Icon.Mark/> Marker {selectedGuids.size} valgte objekter</>}
+                </button>
+                <button onClick={() => setSelectedGuids(new Set())} style={{ padding:"7px 10px", borderRadius:4, border:`1px solid ${M.gray1}`, background:M.white, color:M.gray6, fontFamily:"inherit", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                  Fjern valg
+                </button>
+              </div>
+            )}
             {onCreateTodo && (
-              <TodoButton spec={spec} onCreateTodo={onCreateTodo} tc={tc}/>
+              <TodoButton spec={spec} onCreateTodo={onCreateTodo} tc={tc} selectedGuids={selectedGuids.size > 0 ? Array.from(selectedGuids) : undefined}/>
             )}
             {onCreateTopic && (
-              <TopicButton spec={spec} onCreateTopic={onCreateTopic} tc={tc}/>
+              <TopicButton spec={spec} onCreateTopic={onCreateTopic} tc={tc} selectedGuids={selectedGuids.size > 0 ? Array.from(selectedGuids) : undefined}/>
             )}
           </div>
 
@@ -2260,7 +2304,7 @@ export default function IDSChecker() {
     return await markObjectsInViewer(tc.api, selectedModel.modelId, guids);
   };
 
-  const createTodo = async (spec, title, description, assigneeId = "") => {
+  const createTodo = async (spec, title, description, assigneeId = "", guidsOverride = null) => {
     log.group("createTodo: " + spec.name);
     try {
       const token = tc.getAccessToken();
@@ -2268,7 +2312,7 @@ export default function IDSChecker() {
       const region = project?.location === "europe" ? "app21" : "app";
 
       // Step 1: Mark failing objects in viewer so view captures them
-      const guids = spec.failures.map(f => f.guid).filter(Boolean);
+      const guids = (guidsOverride && guidsOverride.length > 0) ? guidsOverride : spec.failures.map(f => f.guid).filter(Boolean);
       if (guids.length > 0 && selectedModel) {
         log.info("Marking objects for view capture:", guids.length);
         await markObjectsInViewer(tc.api, selectedModel.modelId, guids);
@@ -2315,14 +2359,14 @@ export default function IDSChecker() {
     }
   };
 
-  const createTopic = async (spec, title, desc, assigneeId = "") => {
+  const createTopic = async (spec, title, desc, assigneeId = "", guidsOverride = null) => {
     log.group("createTopic: " + spec.name);
     try {
       const token = tc.getAccessToken();
       const project = await tc.api.project.getCurrentProject();
       const region = project?.location === "europe" ? "app21" : "app";
 
-      const guids = spec.failures.map(f => f.guid).filter(Boolean);
+      const guids = (guidsOverride && guidsOverride.length > 0) ? guidsOverride : spec.failures.map(f => f.guid).filter(Boolean);
       if (guids.length > 0 && selectedModel) {
         await markObjectsInViewer(tc.api, selectedModel.modelId, guids);
         await new Promise(r => setTimeout(r, 500));
@@ -2613,7 +2657,7 @@ export default function IDSChecker() {
             </div>
 
             {specs.map((spec, i) => (
-              <SpecRow key={spec.name} spec={spec} index={i} onMark={canMark?handleMark:null} canMark={canMark} onEditProps={setEditingSpec} onCreateTodo={tc || devMode ? (spec, title, desc, assigneeId) => devMode ? Promise.resolve({created:1,errors:[]}) : createTodo(spec, title, desc, assigneeId) : null} onCreateTopic={tc ? (spec, title, desc, assigneeId) => createTopic(spec, title, desc, assigneeId) : null} tc={tc}/>
+              <SpecRow key={spec.name} spec={spec} index={i} onMark={canMark?handleMark:null} canMark={canMark} onEditProps={setEditingSpec} onCreateTodo={tc || devMode ? (spec, title, desc, assigneeId, guids) => devMode ? Promise.resolve({created:1,errors:[]}) : createTodo(spec, title, desc, assigneeId, guids) : null} onCreateTopic={tc ? (spec, title, desc, assigneeId, guids) => createTopic(spec, title, desc, assigneeId, guids) : null} tc={tc}/>
             ))}
           </div>
         )}
