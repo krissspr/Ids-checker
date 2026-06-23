@@ -1187,10 +1187,14 @@ function TopicButton({ spec, onCreateTopic, tc }) {
 }
 
 // ── Spec row ──────────────────────────────────────────────────────────────────
+const MAX_VISIBLE_FAILURES = 30;
+
 function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCreateTopic, tc }) {
   const [open, setOpen] = useState(false);
   const [marking, setMarking] = useState(false);
   const [markResult, setMarkResult] = useState(null);
+  const [expandedReqs, setExpandedReqs] = useState(() => new Set());
+  const [expandedFlat, setExpandedFlat] = useState(false);
   const pct = spec.total > 0 ? Math.round((spec.passed / spec.total) * 100) : 100;
   const passed = spec.status === "passed";
 
@@ -1259,35 +1263,51 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
                       )}
                     </div>
                     {/* Failing entities for this requirement */}
-                    {failing.slice(0, 50).map((f, fi) => (
-                      <div key={fi}
-                        onClick={() => onMark && f.guid && onMark([f.guid])}
-                        style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 6px", paddingLeft:12, borderRadius:3, borderBottom:fi < Math.min(failing.length, 50) - 1 ? `1px solid ${M.grayLight}` : "none", cursor:onMark&&f.guid?"pointer":"default", transition:"background 0.1s" }}
-                        onMouseEnter={e => { if (onMark&&f.guid) e.currentTarget.style.background = M.bluePale; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                      >
-                        <div style={{width:4,height:4,borderRadius:"50%",background:M.red,flexShrink:0,marginTop:1}}/>
-                        <div style={{fontSize:11,color:M.gray,flex:1}}>{f.name}</div>
-                        <div style={{fontSize:10,fontFamily:"monospace",color:M.gray6}}>{f.type}</div>
-                        {onMark&&f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
-                      </div>
-                    ))}
-                    {failing.length > 50 && <div style={{fontSize:10,color:M.gray6,marginTop:3,paddingLeft:12}}>+ {failing.length - 50} flere</div>}
+                    {(() => {
+                      const reqExpanded = expandedReqs.has(ri);
+                      const visible = reqExpanded ? failing : failing.slice(0, MAX_VISIBLE_FAILURES);
+                      return (
+                        <>
+                          {visible.map((f, fi) => (
+                            <div key={fi}
+                              onClick={() => onMark && f.guid && onMark([f.guid])}
+                              style={{ display:"flex", gap:8, alignItems:"center", padding:"4px 6px", paddingLeft:12, borderRadius:3, borderBottom:fi < visible.length - 1 ? `1px solid ${M.grayLight}` : "none", cursor:onMark&&f.guid?"pointer":"default", transition:"background 0.1s" }}
+                              onMouseEnter={e => { if (onMark&&f.guid) e.currentTarget.style.background = M.bluePale; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                            >
+                              <div style={{width:4,height:4,borderRadius:"50%",background:M.red,flexShrink:0,marginTop:1}}/>
+                              <div style={{fontSize:11,color:M.gray,flex:1}}>{f.name}</div>
+                              <div style={{fontSize:10,fontFamily:"monospace",color:M.gray6}}>{f.type}</div>
+                              {onMark&&f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
+                            </div>
+                          ))}
+                          {!reqExpanded && failing.length > MAX_VISIBLE_FAILURES && (
+                            <button
+                              onClick={() => setExpandedReqs(prev => new Set(prev).add(ri))}
+                              style={{ display:"block", marginTop:4, paddingLeft:12, fontSize:10, fontWeight:600, color:M.blueDark, background:"none", border:"none", cursor:"pointer", textAlign:"left", fontFamily:"inherit" }}
+                            >
+                              Vis alle {failing.length} feil
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 );
               });
             }
 
             // ── Fallback: flat list (no per-requirement data) ─────────────────
+            const visibleFailures = expandedFlat ? spec.failures : spec.failures.slice(0, MAX_VISIBLE_FAILURES);
             return (
               <>
                 <div style={{fontSize:10,color:M.gray6,marginBottom:8,fontStyle:"italic"}}>
                   {reqs.map((r, i) => <div key={i}>{r.pset ? `${r.pset}.${r.name}` : r.name}: {r.krav_tekst}</div>)}
                 </div>
-                {spec.failures.map((f, i) => (
+                {visibleFailures.map((f, i) => (
                   <div key={i}
                     onClick={() => onMark && f.guid && onMark([f.guid])}
-                    style={{ display:"flex", gap:8, alignItems:"center", padding:"5px 6px", borderRadius:3, borderBottom:i<spec.failures.length-1?`1px solid ${M.grayLight}`:"none", cursor:onMark&&f.guid?"pointer":"default", transition:"background 0.1s" }}
+                    style={{ display:"flex", gap:8, alignItems:"center", padding:"5px 6px", borderRadius:3, borderBottom:i<visibleFailures.length-1?`1px solid ${M.grayLight}`:"none", cursor:onMark&&f.guid?"pointer":"default", transition:"background 0.1s" }}
                     onMouseEnter={e => { if (onMark&&f.guid) e.currentTarget.style.background = M.bluePale; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                   >
@@ -1298,7 +1318,14 @@ function SpecRow({ spec, index, onMark, canMark, onEditProps, onCreateTodo, onCr
                     {onMark&&f.guid && <div style={{fontSize:9,color:M.blue,opacity:0.6}}>↗</div>}
                   </div>
                 ))}
-                {spec.more_failures > 0 && <div style={{fontSize:10,color:M.gray6,marginTop:6}}>+ {spec.more_failures} flere</div>}
+                {!expandedFlat && spec.failures.length > MAX_VISIBLE_FAILURES && (
+                  <button
+                    onClick={() => setExpandedFlat(true)}
+                    style={{ display:"block", marginTop:6, fontSize:10, fontWeight:600, color:M.blueDark, background:"none", border:"none", cursor:"pointer", textAlign:"left", fontFamily:"inherit" }}
+                  >
+                    Vis alle {spec.failures.length} feil
+                  </button>
+                )}
               </>
             );
           })()}
