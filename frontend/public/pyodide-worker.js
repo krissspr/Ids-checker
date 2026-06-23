@@ -210,8 +210,7 @@ for spec in specs.specifications:
         "failed_req_names": [],
         "passed": passed, "failed": failed, "total": total,
         "no_objects": total == 0,
-        "failures": failing[:50],
-        "more_failures": max(0, len(failing) - 50),
+        "failures": failing,
     })
 
 # ── Egen validering: finn IfcElement-objekter uten Objektdata-pset ──
@@ -285,15 +284,14 @@ def _ev_spec(name, req_txt, krav_txt, missing, total):
             "enum_values": [], "pattern": None, "bounds": {}, "data_type": "",
             "instructions": "", "cardinality": "required",
             "krav_tekst": krav_txt, "description": "Objektdata",
-            "failing": missing[:50],
+            "failing": missing,
         }],
         "failed_req_names": ["Objektdata"] if missing else [],
         "passed": total - failed,
         "failed": failed,
         "total": total,
         "no_objects": total == 0,
-        "failures": missing[:50],
-        "more_failures": max(0, failed - 50),
+        "failures": missing,
     }
 
 result_specs.append(_ev_spec(
@@ -351,15 +349,14 @@ result_specs.append({
         "cardinality": "required",
         "krav_tekst": "Egenskapssett Prosessdata m\xe5 eksistere p\xe5 objektet",
         "description": "Prosessdata",
-        "failing": _ev2_missing[:50],
+        "failing": _ev2_missing,
     }],
     "failed_req_names": ["Prosessdata"] if _ev2_missing else [],
     "passed": _ev2_passed,
     "failed": _ev2_failed,
     "total": _ev2_total,
     "no_objects": _ev2_total == 0,
-    "failures": _ev2_missing[:50],
-    "more_failures": max(0, _ev2_failed - 50),
+    "failures": _ev2_missing,
 })
 
 total_passed = sum(1 for s in result_specs if s["status"] == "passed")
