@@ -887,7 +887,7 @@ function TodoButton({ spec, onCreateTodo, tc, selectedGuids }) {
     return [`Krav: ${spec.requirement}`, ``, `Feilet: ${spec.failed} av ${spec.total} objekter`].join("\n");
   };
 
-  const defaultDesc = buildDesc();
+  const defaultDesc = buildDesc().slice(0, 1024);
 
   const [title, setTitle] = useState(defaultTitle);
   const [desc, setDesc] = useState(defaultDesc);
@@ -1080,7 +1080,7 @@ function TopicButton({ spec, onCreateTopic, tc, selectedGuids }) {
   };
 
   const [title, setTitle] = useState(defaultTitle);
-  const [desc, setDesc] = useState(() => buildDesc());
+  const [desc, setDesc] = useState(() => buildDesc().slice(0, 1024));
 
   const handleOpen = async () => {
     setOpen(!open);
