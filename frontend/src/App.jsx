@@ -2315,12 +2315,14 @@ function GeometryToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, on
   useEffect(() => {
     if (!tc?.subscribe) return;
     const unsub = tc.subscribe((event, args) => {
-      if (event !== "viewer.onSelectionChanged") return;
-      const modelObjectIds = args?.data?.modelObjectIds || [];
-      const total = modelObjectIds.reduce((s, m) => s + (m.objectRuntimeIds?.length || 0), 0);
-      if (total !== 1) { setSelection(null); return; }
-      const { modelId, objectRuntimeIds } = modelObjectIds[0];
-      handleObjectSelected(modelId, objectRuntimeIds[0]);
+      // Bekreftet empirisk i faktisk TC-økt: klikk i 3D-viewer sender viewer.onPicked, ikke
+      // viewer.onSelectionChanged (som dokumentasjonen ellers beskriver for seleksjon).
+      if (event !== "viewer.onPicked") return;
+      const data = args?.data || {};
+      const modelId = data.modelId ?? data.modelID;
+      const runtimeId = data.objectRuntimeId ?? data.objectRuntimeID;
+      if (!modelId || runtimeId == null) { setSelection(null); return; }
+      handleObjectSelected(modelId, runtimeId);
     });
     return unsub;
   }, [tc]);
