@@ -142,15 +142,22 @@ async function connectToTC() {
   try {
     const WorkspaceAPI = await import("trimble-connect-workspace-api");
     let accessToken = null;
+    const listeners = new Set();
     const api = await WorkspaceAPI.connect(window.parent, (event, args) => {
       log.info(`TC event: ${event}`, args);
       if (event === "extension.accessToken") accessToken = args?.data;
+      listeners.forEach(fn => { try { fn(event, args); } catch (e) { log.error("TC listener failed:", e.message); } });
     }, 10000);
     log.ok("Connected");
     const token = await api.extension.requestPermission("accesstoken");
     log.info("Token:", token?.substring?.(0, 20) + "...");
     if (token && token !== "pending" && token !== "denied") accessToken = token;
-    return { api, getAccessToken: () => accessToken };
+    return {
+      api,
+      getAccessToken: () => accessToken,
+      // Multiple pages need TC events (e.g. viewer.onSelectionChanged) but WorkspaceAPI.connect only takes one callback
+      subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
+    };
   } catch (e) { log.error("TC connect failed:", e.message); return null; }
 }
 
@@ -825,6 +832,22 @@ async function uploadFileToTC(tc, fileBytes, filename, folderId) {
   return { fileId: initData.fileId, name: filename };
 }
 
+// ── TC Download function ───────────────────────────────────────────────────────
+async function downloadIfcBytesFromTc(tc, model) {
+  const token = tc.getAccessToken();
+  const project = await tc.api.project.getCurrentProject();
+  const host = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+  const urlRes = await fetch(
+    `https://${host}/tc/api/2.0/files/fs/${model.fileId}/downloadurl`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!urlRes.ok) throw new Error(`Kunne ikke hente nedlastings-URL: ${urlRes.status}`);
+  const { url } = await urlRes.json();
+  const dlRes = await fetch(url);
+  if (!dlRes.ok) throw new Error(`Nedlasting feilet: ${dlRes.status}`);
+  return new Uint8Array(await dlRes.arrayBuffer());
+}
+
 // ── ToDo editor (inline in SpecRow) ──────────────────────────────────────────
 function TodoButton({ spec, onCreateTodo, tc, selectedGuids }) {
   const [open, setOpen] = useState(false);
@@ -1417,6 +1440,15 @@ function HomePage({ onSelect, tc, devMode }) {
       desc: "Rediger egenskaper direkte på IFC-objekter og last ned korrigert modell.",
       color: "#e08c00",
       colorPale: M.yellowPale,
+      beta: true,
+    },
+    {
+      id: "geom",
+      icon: "📐",
+      title: "Punkt & Linje",
+      desc: "Klikk et objekt i 3D-viewer og lag punkt, linje, topplinje eller bunnlinje som egen IFC-fil.",
+      color: "#7c3aed",
+      colorPale: "#f3f0fe",
       beta: true,
     },
   ];
@@ -2236,6 +2268,402 @@ json.dumps({"rules": results, "total": sum(r["count"] for r in results)})
   );
 }
 
+// ── GeometryToolPage ──────────────────────────────────────────────────────────
+async function fetchSelectedObjectInfo(api, modelId, runtimeId) {
+  const [guid] = await api.viewer.convertToObjectIds(modelId, [runtimeId]);
+  const [props] = await api.viewer.getObjectProperties(modelId, [runtimeId]).catch(() => [null]);
+  const [bboxEntry] = await api.viewer.getObjectBoundingBoxes(modelId, [runtimeId]).catch(() => [null]);
+  return {
+    modelId, runtimeId, guid,
+    name: props?.product?.name || props?.class || guid || "Objekt",
+    className: props?.class || "",
+    boundingBox: bboxEntry?.boundingBox || null,
+  };
+}
+
+const GEOM_MODE_LABELS = { point: "Punkt", line: "Linje", topline: "Topplinje", bottomline: "Bunnlinje" };
+
+function GeometryToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack }) {
+  const [selection, setSelection] = useState(null);
+  const [selecting, setSelecting] = useState(false);
+  const [computing, setComputing] = useState(null); // mode currently being beregnet
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState(null);
+  const [exportBytes, setExportBytes] = useState(null);
+  const [exportState, setExportState] = useState("idle"); // idle|building|done|error
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [tcUploadState, setTcUploadState] = useState("idle");
+
+  const modelBytesCacheRef = useRef(new Map());
+  const lastWrittenModelIdRef = useRef(null);
+
+  const handleObjectSelected = async (modelId, runtimeId) => {
+    setSelecting(true); setError(null);
+    try {
+      const info = await fetchSelectedObjectInfo(tc.api, modelId, runtimeId);
+      if (!info.guid) throw new Error("Fant ikke GUID for valgt objekt");
+      setSelection(info);
+    } catch (e) {
+      log.error("handleObjectSelected:", e.message);
+      setError(e.message);
+      setSelection(null);
+    } finally {
+      setSelecting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!tc?.subscribe) return;
+    const unsub = tc.subscribe((event, args) => {
+      if (event !== "viewer.onSelectionChanged") return;
+      const modelObjectIds = args?.data?.modelObjectIds || [];
+      const total = modelObjectIds.reduce((s, m) => s + (m.objectRuntimeIds?.length || 0), 0);
+      if (total !== 1) { setSelection(null); return; }
+      const { modelId, objectRuntimeIds } = modelObjectIds[0];
+      handleObjectSelected(modelId, objectRuntimeIds[0]);
+    });
+    return unsub;
+  }, [tc]);
+
+  // Skriver valgt modells IFC-bytes til Pyodide-filsystemet — kun på nytt hvis modellen har endret seg
+  const ensureModelReady = async (modelId) => {
+    const py = await loadPyodide();
+    let bytes = modelBytesCacheRef.current.get(modelId);
+    if (!bytes) {
+      const info = loadedModels.find(m => m.modelId === modelId);
+      if (!info) throw new Error("Fant ikke modellinfo for valgt objekt");
+      bytes = await downloadIfcBytesFromTc(tc, info);
+      modelBytesCacheRef.current.set(modelId, bytes);
+    }
+    if (lastWrittenModelIdRef.current !== modelId) {
+      py.FS.writeFile("/geom_model.ifc", bytes);
+      lastWrittenModelIdRef.current = modelId;
+    }
+    return py;
+  };
+
+  const addItem = (fields) => {
+    setItems(list => [...list, {
+      id: `g${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+      guid: selection.guid, objectName: selection.name, modelId: selection.modelId,
+      ...fields,
+    }]);
+  };
+
+  const addPoint = () => {
+    if (!selection?.boundingBox) { setError("Fant ikke bounding box for objektet"); return; }
+    const { min, max } = selection.boundingBox;
+    const coords = [(min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2];
+    addItem({ mode: "point", label: `Punkt - ${selection.name}`, coords });
+  };
+
+  const addLineMode = async (mode) => {
+    if (!selection) return;
+    setComputing(mode); setError(null);
+    try {
+      const py = await ensureModelReady(selection.modelId);
+      py.globals.set("GEOM_GUID", selection.guid);
+      py.globals.set("GEOM_MODE", mode);
+      const resultJson = await py.runPythonAsync(`
+import ifcopenshell, ifcopenshell.geom, json
+import numpy as np
+
+model = ifcopenshell.open("/geom_model.ifc")
+element = model.by_guid(GEOM_GUID)
+
+settings = ifcopenshell.geom.settings()
+settings.set(settings.USE_WORLD_COORDS, True)
+shape = ifcopenshell.geom.create_shape(settings, element)
+verts = shape.geometry.verts
+n = len(verts) // 3
+pts = np.array([[verts[i*3], verts[i*3+1], verts[i*3+2]] for i in range(n)])
+
+z_min, z_max = float(pts[:,2].min()), float(pts[:,2].max())
+tol = max((z_max - z_min) * 0.02, 0.005)
+
+if GEOM_MODE == "topline":
+    subset = pts[pts[:,2] >= z_max - tol]
+    z_fixed = z_max
+elif GEOM_MODE == "bottomline":
+    subset = pts[pts[:,2] <= z_min + tol]
+    z_fixed = z_min
+else:
+    subset = pts
+    z_fixed = (z_min + z_max) / 2
+
+xy = subset[:, :2]
+center_xy = xy.mean(axis=0)
+centered = xy - center_xy
+if len(centered) >= 2 and np.linalg.matrix_rank(centered) >= 1:
+    _, _, vt = np.linalg.svd(centered, full_matrices=False)
+    direction = vt[0]
+else:
+    direction = np.array([1.0, 0.0])
+
+proj = centered @ direction
+p_min = center_xy + proj.min() * direction
+p_max = center_xy + proj.max() * direction
+
+json.dumps({
+    "start": [float(p_min[0]), float(p_min[1]), float(z_fixed)],
+    "end": [float(p_max[0]), float(p_max[1]), float(z_fixed)],
+})
+`);
+      const result = JSON.parse(resultJson);
+      addItem({ mode, label: `${GEOM_MODE_LABELS[mode]} - ${selection.name}`, start: result.start, end: result.end });
+    } catch (e) {
+      log.error("addLineMode:", e.message);
+      setError(e.message);
+    } finally {
+      setComputing(null);
+    }
+  };
+
+  const removeItem = (id) => setItems(list => list.filter(it => it.id !== id));
+
+  // Bygger én samlet IFC-fil av alle punkter/linjer. Georeferanse (IfcSite/IfcMapConversion) kopieres
+  // fra modellen til det FØRSTE elementet — hvis punktene stammer fra flere ulike modeller brukes kun denne.
+  const buildExport = async () => {
+    if (items.length === 0) return null;
+    setExportState("building"); setError(null);
+    try {
+      const py = await ensureModelReady(items[0].modelId);
+      py.globals.set("GEOM_ITEMS_JSON", JSON.stringify(items.map(it => ({
+        mode: it.mode, label: it.label, coords: it.coords, start: it.start, end: it.end,
+      }))));
+      await py.runPythonAsync(`
+import ifcopenshell, ifcopenshell.guid, json, time
+
+items = json.loads(GEOM_ITEMS_JSON)
+src = ifcopenshell.open("/geom_model.ifc")
+schema = src.schema
+
+out = ifcopenshell.file(schema=schema)
+
+person = out.create_entity("IfcPerson")
+org = out.create_entity("IfcOrganization", Name="IDS Regelsjekker")
+person_org = out.create_entity("IfcPersonAndOrganization", ThePerson=person, TheOrganization=org)
+app = out.create_entity("IfcApplication", ApplicationDeveloper=org, Version="1.0",
+                         ApplicationFullName="IDS Regelsjekker", ApplicationIdentifier="ids-checker")
+owner_hist = out.create_entity("IfcOwnerHistory", OwningUser=person_org, OwningApplication=app,
+                                ChangeAction="ADDED", CreationDate=int(time.time()))
+
+length_unit = out.create_entity("IfcSIUnit", UnitType="LENGTHUNIT", Name="METRE")
+units = out.create_entity("IfcUnitAssignment", Units=[length_unit])
+
+origin = out.create_entity("IfcCartesianPoint", Coordinates=(0.0, 0.0, 0.0))
+z_axis = out.create_entity("IfcDirection", DirectionRatios=(0.0, 0.0, 1.0))
+x_axis = out.create_entity("IfcDirection", DirectionRatios=(1.0, 0.0, 0.0))
+world_placement = out.create_entity("IfcAxis2Placement3D", Location=origin, Axis=z_axis, RefDirection=x_axis)
+true_north = out.create_entity("IfcDirection", DirectionRatios=(0.0, 1.0, 0.0))
+context = out.create_entity("IfcGeometricRepresentationContext", ContextType="Model", CoordinateSpaceDimension=3,
+                             Precision=1e-5, WorldCoordinateSystem=world_placement, TrueNorth=true_north)
+
+# Kopier geo-referanse slik at filen havner riktig i TC ved siden av kildemodellen
+try:
+    src_map = src.by_type("IfcMapConversion")
+    if src_map:
+        mc = src_map[0]
+        src_crs = mc.TargetCRS
+        crs_attrs = src_crs.get_info(include_identifier=False)
+        crs_attrs.pop("type", None)
+        out_crs = out.create_entity(src_crs.is_a(), **crs_attrs)
+        out.create_entity("IfcMapConversion",
+            SourceCRS=context, TargetCRS=out_crs,
+            Eastings=mc.Eastings, Northings=mc.Northings, OrthogonalHeight=mc.OrthogonalHeight,
+            XAxisAbscissa=mc.XAxisAbscissa, XAxisOrdinate=mc.XAxisOrdinate, Scale=mc.Scale)
+except Exception as e:
+    print("map conversion skipped:", e)
+
+project = out.create_entity("IfcProject", GlobalId=ifcopenshell.guid.new(), OwnerHistory=owner_hist,
+                             Name="Genererte punkter og linjer", RepresentationContexts=[context], UnitsInContext=units)
+
+site_placement = out.create_entity("IfcLocalPlacement", RelativePlacement=world_placement)
+site_kwargs = dict(GlobalId=ifcopenshell.guid.new(), OwnerHistory=owner_hist, Name="Site",
+                    ObjectPlacement=site_placement, CompositionType="ELEMENT")
+try:
+    src_site = src.by_type("IfcSite")[0]
+    for attr in ("RefLatitude", "RefLongitude", "RefElevation"):
+        val = getattr(src_site, attr, None)
+        if val is not None:
+            site_kwargs[attr] = val
+except Exception as e:
+    print("site geoloc skipped:", e)
+site = out.create_entity("IfcSite", **site_kwargs)
+
+out.create_entity("IfcRelAggregates", GlobalId=ifcopenshell.guid.new(), OwnerHistory=owner_hist,
+                   RelatingObject=project, RelatedObjects=[site])
+
+annotations = []
+for it in items:
+    mode = it["mode"]
+    label = it["label"]
+    placement = out.create_entity("IfcLocalPlacement", RelativePlacement=world_placement)
+    if mode == "point":
+        x, y, z = it["coords"]
+        point = out.create_entity("IfcCartesianPoint", Coordinates=(float(x), float(y), float(z)))
+        rep = out.create_entity("IfcShapeRepresentation", ContextOfItems=context, RepresentationIdentifier="Body",
+                                 RepresentationType="Point", Items=[point])
+    else:
+        sx, sy, sz = it["start"]
+        ex, ey, ez = it["end"]
+        p1 = out.create_entity("IfcCartesianPoint", Coordinates=(float(sx), float(sy), float(sz)))
+        p2 = out.create_entity("IfcCartesianPoint", Coordinates=(float(ex), float(ey), float(ez)))
+        polyline = out.create_entity("IfcPolyline", Points=[p1, p2])
+        rep = out.create_entity("IfcShapeRepresentation", ContextOfItems=context, RepresentationIdentifier="Body",
+                                 RepresentationType="Curve3D", Items=[polyline])
+    shape = out.create_entity("IfcProductDefinitionShape", Representations=[rep])
+    ann = out.create_entity("IfcAnnotation", GlobalId=ifcopenshell.guid.new(), OwnerHistory=owner_hist,
+                             Name=label, ObjectPlacement=placement, Representation=shape)
+    annotations.append(ann)
+
+out.create_entity("IfcRelContainedInSpatialStructure", GlobalId=ifcopenshell.guid.new(), OwnerHistory=owner_hist,
+                   RelatedElements=annotations, RelatingStructure=site)
+
+out.write("/geom_export.ifc")
+`);
+      const bytes = await py.FS.readFile("/geom_export.ifc");
+      setExportBytes(bytes);
+      setExportState("done");
+      return bytes;
+    } catch (e) {
+      log.error("buildExport:", e.message);
+      setError(e.message);
+      setExportState("error");
+      return null;
+    }
+  };
+
+  const downloadExport = async () => {
+    const bytes = exportBytes || await buildExport();
+    if (!bytes) return;
+    const blob = new Blob([bytes], { type: "application/octet-stream" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `punkter_linjer_${Date.now()}.ifc`;
+    a.click();
+  };
+
+  const uploadExportToTc = async (folder) => {
+    setShowFolderPicker(false);
+    const bytes = exportBytes || await buildExport();
+    if (!bytes) return;
+    setTcUploadState("uploading");
+    try {
+      await uploadFileToTC(tc, bytes, `punkter_linjer_${Date.now()}.ifc`, folder.id);
+      setTcUploadState("done");
+    } catch (e) {
+      log.error("uploadExportToTc:", e.message);
+      setTcUploadState("error");
+    }
+  };
+
+  const sectionLabel = (text) => (
+    <div style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>{text}</div>
+  );
+  const btnStyle = (color, outline) => ({
+    fontSize:11, padding:"6px 12px", borderRadius:4,
+    border:`1px solid ${color}`, background: outline ? M.white : color,
+    color: outline ? color : M.white,
+    cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:5,
+  });
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, background:M.grayLight }}>
+
+      {/* Header */}
+      <div style={{ background:M.blueDark, padding:"10px 14px", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+        <button onClick={onBack} style={{ background:"none", border:"none", color:M.white, cursor:"pointer", fontSize:18, padding:0, opacity:0.8, lineHeight:1 }}>←</button>
+        <div style={{ color:M.white, fontWeight:700, fontSize:13 }}>Punkt & Linje</div>
+        <span style={{ fontSize:9, fontWeight:700, background:M.yellow, color:M.gray, borderRadius:3, padding:"2px 6px", letterSpacing:"0.05em", textTransform:"uppercase" }}>Beta</span>
+      </div>
+
+      <div style={{ flex:1, overflow:"auto", padding:14, display:"flex", flexDirection:"column", gap:14 }}>
+
+        {devMode && (
+          <div style={{ fontSize:11, color:M.gray6, padding:10, background:M.white, borderRadius:4, border:`1px solid ${M.gray0}` }}>
+            Ikke tilgjengelig i utviklingsmodus — krever Trimble Connect 3D-viewer.
+          </div>
+        )}
+
+        {!devMode && (
+          <section>
+            {sectionLabel("Valgt objekt")}
+            {!selection && !selecting && (
+              <div style={{ fontSize:11, color:M.gray6, padding:12, background:M.white, borderRadius:4, border:`1px dashed ${M.gray1}` }}>
+                Klikk på ett objekt i 3D-viewer for å starte.
+              </div>
+            )}
+            {selecting && (
+              <div style={{ fontSize:11, color:M.gray6, padding:12, background:M.white, borderRadius:4, border:`1px solid ${M.gray0}`, display:"flex", alignItems:"center", gap:8 }}>
+                <Icon.Spinner/> Henter objektinfo…
+              </div>
+            )}
+            {selection && !selecting && (
+              <div style={{ background:M.white, borderRadius:4, border:`1px solid #7c3aed40`, padding:10 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:M.gray, marginBottom:2 }}>{selection.name}</div>
+                <div style={{ fontSize:10, color:M.gray6, marginBottom:10, fontFamily:"monospace" }}>{selection.className} · {selection.guid}</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                  <button onClick={addPoint} style={btnStyle("#7c3aed", true)}>+ Punkt</button>
+                  <button onClick={() => addLineMode("line")} disabled={computing==="line"} style={btnStyle("#7c3aed", true)}>{computing==="line" ? <Icon.Spinner color="#7c3aed"/> : null} Linje</button>
+                  <button onClick={() => addLineMode("topline")} disabled={computing==="topline"} style={btnStyle("#7c3aed", true)}>{computing==="topline" ? <Icon.Spinner color="#7c3aed"/> : null} Topplinje</button>
+                  <button onClick={() => addLineMode("bottomline")} disabled={computing==="bottomline"} style={btnStyle("#7c3aed", true)}>{computing==="bottomline" ? <Icon.Spinner color="#7c3aed"/> : null} Bunnlinje</button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {error && (
+          <div style={{ fontSize:11, color:M.redDark, padding:10, background:M.redPale, borderRadius:4, border:`1px solid ${M.red}40` }}>{error}</div>
+        )}
+
+        <section>
+          {sectionLabel(`Samlet i denne økten (${items.length})`)}
+          {items.length === 0 ? (
+            <div style={{ fontSize:11, color:M.gray6, padding:12, background:M.white, borderRadius:4, border:`1px solid ${M.gray0}` }}>
+              Ingen punkter eller linjer lagt til ennå.
+            </div>
+          ) : (
+            <div style={{ background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, overflow:"hidden" }}>
+              {items.map(it => (
+                <div key={it.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderBottom:`1px solid ${M.gray0}` }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:11, fontWeight:600, color:M.gray, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{it.label}</div>
+                    <div style={{ fontSize:10, color:M.gray6 }}>{GEOM_MODE_LABELS[it.mode]}</div>
+                  </div>
+                  <button onClick={() => removeItem(it.id)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:14, color:M.gray3, lineHeight:1 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {items.length > 0 && (
+          <section>
+            {sectionLabel("Eksporter")}
+            <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+              <button onClick={downloadExport} disabled={exportState==="building"} style={btnStyle(M.blue, true)}>
+                {exportState==="building" ? <Icon.Spinner/> : <Icon.Download/>} Last ned til PC
+              </button>
+              {tc && (
+                <button onClick={() => setShowFolderPicker(true)} disabled={exportState==="building"} style={btnStyle(M.blue, true)}>
+                  {tcUploadState==="uploading" ? <Icon.Spinner/> : "↑"} Last opp til TC-mappe
+                </button>
+              )}
+            </div>
+            {tcUploadState === "done" && <div style={{ fontSize:11, color:M.greenDark, marginTop:6 }}>Lastet opp til Trimble Connect.</div>}
+            {tcUploadState === "error" && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>Opplasting feilet.</div>}
+          </section>
+        )}
+
+      </div>
+
+      {showFolderPicker && <FolderPicker tc={tc} onSelect={uploadExportToTc} onClose={() => setShowFolderPicker(false)}/>}
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function IDSChecker() {
   const [page, setPage] = useState("home");
@@ -2526,6 +2954,22 @@ export default function IDSChecker() {
         <PropertyEditorPage
           tc={tc}
           devMode={devMode}
+          loadPyodide={loadPyodide}
+          pyStatus={pyStatus}
+          onBack={() => setPage("home")}
+        />
+      </div>
+    );
+  }
+
+  if (page === "geom") {
+    return (
+      <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
+        {globalStyle}
+        <GeometryToolPage
+          tc={tc}
+          devMode={devMode}
+          loadedModels={loadedModels}
           loadPyodide={loadPyodide}
           pyStatus={pyStatus}
           onBack={() => setPage("home")}
