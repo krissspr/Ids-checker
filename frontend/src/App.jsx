@@ -2286,14 +2286,15 @@ const GEOM_MODE_LABELS = { point: "Punkt", line: "Linje", topline: "Topplinje", 
 
 // Konverterer lokale IFC-koordinater til WGS84 lengde/bredde.
 // Hvis modellen har IfcMapConversion/IfcProjectedCRS brukes den (Eastings/Northings/rotasjon/skala,
-// se buildingSMART IFC4x3 §8.18.3.6). Hvis ikke antas lokale X/Y å allerede være UTM33-koordinater
-// (EUREF89 UTM sone 33, EPSG:25833 — NVDB-standard for norske vegprosjekter).
+// se buildingSMART IFC4x3 §8.18.3.6) — enten UTM (EUREF89/ETRS89, EPSG 25828-25838) eller det norske
+// NTM-sonesystemet (EPSG 5105-5130, sone N har sentralmeridian N+0.5°, jf. Kartverket). Hvis ikke
+// antas lokale X/Y å allerede være UTM33-koordinater (EPSG:25833 — NVDB-standard for norske vegprosjekter).
 function localToWgs84([x, y, z], crsInfo) {
-  let zone = 33, hemisphere = "N", eastings = 0, northings = 0, orthoHeight = 0, scale = 1, cosT = 1, sinT = 0;
+  let crsType = "utm", zone = 33, eastings = 0, northings = 0, orthoHeight = 0, scale = 1, cosT = 1, sinT = 0;
   const detected = !!crsInfo?.found;
   if (detected) {
-    zone = crsInfo.utm_zone;
-    hemisphere = crsInfo.hemisphere || "N";
+    crsType = crsInfo.crs_type;
+    zone = crsInfo.zone;
     eastings = crsInfo.eastings;
     northings = crsInfo.northings;
     orthoHeight = crsInfo.orthogonal_height || 0;
@@ -2304,9 +2305,11 @@ function localToWgs84([x, y, z], crsInfo) {
   const mapX = eastings + scale * (x * cosT - y * sinT);
   const mapY = northings + scale * (x * sinT + y * cosT);
   const mapZ = orthoHeight + scale * z;
-  const def = `+proj=utm +zone=${zone}${hemisphere === "S" ? " +south" : ""} +ellps=GRS80 +units=m +no_defs`;
+  const def = crsType === "ntm"
+    ? `+proj=tmerc +lat_0=58 +lon_0=${zone + 0.5} +k=1 +x_0=100000 +y_0=1000000 +ellps=GRS80 +units=m +no_defs`
+    : `+proj=utm +zone=${zone} +ellps=GRS80 +units=m +no_defs`;
   const [lon, lat] = proj4(def, "WGS84", [mapX, mapY]);
-  return { lon, lat, elevation: mapZ, detected, zone };
+  return { lon, lat, elevation: mapZ, detected, crsType, zone };
 }
 
 function buildGeoJson(items, crsInfo) {
@@ -2336,7 +2339,7 @@ function GeometryToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, on
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [tcUploadState, setTcUploadState] = useState("idle");
   const [geoJsonState, setGeoJsonState] = useState("idle"); // idle|building|done|error
-  const [geoJsonDetected, setGeoJsonDetected] = useState(null); // true/false — ble CRS funnet i modellen?
+  const [geoJsonCrsInfo, setGeoJsonCrsInfo] = useState(null); // crsInfo brukt i siste eksport, for visning i UI
 
   const modelBytesCacheRef = useRef(new Map());
   const lastWrittenModelIdRef = useRef(null);
@@ -2407,19 +2410,30 @@ try:
         name = getattr(crs, "Name", "") or ""
         desc = getattr(crs, "Description", "") or ""
         text = f"{name} {desc}"
-        zone = None
-        m = re.search(r"258(2[89]|3[0-8])", text)
-        if m:
-            zone = int(m.group(0)) - 25800
+
+        # EUREF89/ETRS89 UTM: EPSG 25828-25838 (zone = epsg-25800)
+        # Norsk NTM-sonesystem: EPSG 5105-5130 (sone = epsg-5100, sentralmeridian = sone+0.5, jf. Kartverket)
+        crs_type, zone = None, None
+        m = re.search(r"(\\d{4,5})", name)
+        epsg = int(m.group(1)) if m else None
+        if epsg is not None and 25828 <= epsg <= 25838:
+            crs_type, zone = "utm", epsg - 25800
+        elif epsg is not None and 5105 <= epsg <= 5130:
+            crs_type, zone = "ntm", epsg - 5100
         else:
-            m = re.search(r"utm[^0-9]*(\\d{1,2})", text, re.IGNORECASE)
+            m = re.search(r"ntm[^0-9]*(\\d{1,2})", text, re.IGNORECASE)
             if m:
-                zone = int(m.group(1))
-        if zone:
+                crs_type, zone = "ntm", int(m.group(1))
+            else:
+                m = re.search(r"utm[^0-9]*(\\d{1,2})", text, re.IGNORECASE)
+                if m:
+                    crs_type, zone = "utm", int(m.group(1))
+
+        if crs_type and zone:
             result = {
                 "found": True,
-                "utm_zone": zone,
-                "hemisphere": "S" if "south" in text.lower() else "N",
+                "crs_type": crs_type,
+                "zone": zone,
                 "eastings": float(mc.Eastings), "northings": float(mc.Northings),
                 "orthogonal_height": float(mc.OrthogonalHeight) if mc.OrthogonalHeight is not None else 0.0,
                 "x_axis_abscissa": float(mc.XAxisAbscissa) if mc.XAxisAbscissa is not None else 1.0,
@@ -2662,7 +2676,7 @@ out.write("/geom_export.ifc")
       a.href = URL.createObjectURL(blob);
       a.download = `punkter_linjer_${Date.now()}.geojson`;
       a.click();
-      setGeoJsonDetected(!!crsInfo?.found);
+      setGeoJsonCrsInfo(crsInfo);
       setGeoJsonState("done");
     } catch (e) {
       log.error("downloadGeoJson:", e.message);
@@ -2776,10 +2790,12 @@ out.write("/geom_export.ifc")
             <button onClick={downloadGeoJson} disabled={geoJsonState==="building"} style={btnStyle(M.blue, true)}>
               {geoJsonState==="building" ? <Icon.Spinner/> : <Icon.Download/>} Last ned .geojson
             </button>
-            {geoJsonState === "done" && geoJsonDetected && (
-              <div style={{ fontSize:11, color:M.greenDark, marginTop:6 }}>Lastet ned — koordinatsystem oppdaget i modellen (IfcMapConversion).</div>
+            {geoJsonState === "done" && geoJsonCrsInfo?.found && (
+              <div style={{ fontSize:11, color:M.greenDark, marginTop:6 }}>
+                Lastet ned — koordinatsystem oppdaget i modellen ({geoJsonCrsInfo.crs_type === "ntm" ? "NTM" : "UTM"} sone {geoJsonCrsInfo.zone}).
+              </div>
             )}
-            {geoJsonState === "done" && !geoJsonDetected && (
+            {geoJsonState === "done" && !geoJsonCrsInfo?.found && (
               <div style={{ fontSize:11, color:M.yellowDark, marginTop:6 }}>Lastet ned — fant ikke koordinatsystem i modellen. Antok EUREF89 UTM sone 33 (EPSG:25833, NVDB-standard). Sjekk at posisjonen stemmer.</div>
             )}
             {geoJsonState === "error" && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>Konvertering feilet.</div>}
