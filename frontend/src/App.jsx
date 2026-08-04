@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import proj4 from "proj4";
 
 // ── Trimble Modus colors ──────────────────────────────────────────────────────
 const M = {
@@ -2283,6 +2284,47 @@ async function fetchSelectedObjectInfo(api, modelId, runtimeId) {
 
 const GEOM_MODE_LABELS = { point: "Punkt", line: "Linje", topline: "Topplinje", bottomline: "Bunnlinje" };
 
+// Konverterer lokale IFC-koordinater til WGS84 lengde/bredde.
+// Hvis modellen har IfcMapConversion/IfcProjectedCRS brukes den (Eastings/Northings/rotasjon/skala,
+// se buildingSMART IFC4x3 §8.18.3.6). Hvis ikke antas lokale X/Y å allerede være UTM33-koordinater
+// (EUREF89 UTM sone 33, EPSG:25833 — NVDB-standard for norske vegprosjekter).
+function localToWgs84([x, y, z], crsInfo) {
+  let zone = 33, hemisphere = "N", eastings = 0, northings = 0, orthoHeight = 0, scale = 1, cosT = 1, sinT = 0;
+  const detected = !!crsInfo?.found;
+  if (detected) {
+    zone = crsInfo.utm_zone;
+    hemisphere = crsInfo.hemisphere || "N";
+    eastings = crsInfo.eastings;
+    northings = crsInfo.northings;
+    orthoHeight = crsInfo.orthogonal_height || 0;
+    scale = crsInfo.scale ?? 1;
+    cosT = crsInfo.x_axis_abscissa ?? 1;
+    sinT = crsInfo.x_axis_ordinate ?? 0;
+  }
+  const mapX = eastings + scale * (x * cosT - y * sinT);
+  const mapY = northings + scale * (x * sinT + y * cosT);
+  const mapZ = orthoHeight + scale * z;
+  const def = `+proj=utm +zone=${zone}${hemisphere === "S" ? " +south" : ""} +ellps=GRS80 +units=m +no_defs`;
+  const [lon, lat] = proj4(def, "WGS84", [mapX, mapY]);
+  return { lon, lat, elevation: mapZ, detected, zone };
+}
+
+function buildGeoJson(items, crsInfo) {
+  const features = items.map(it => {
+    let geometry;
+    if (it.mode === "point") {
+      const p = localToWgs84(it.coords, crsInfo);
+      geometry = { type: "Point", coordinates: [p.lon, p.lat, p.elevation] };
+    } else {
+      const p1 = localToWgs84(it.start, crsInfo);
+      const p2 = localToWgs84(it.end, crsInfo);
+      geometry = { type: "LineString", coordinates: [[p1.lon, p1.lat, p1.elevation], [p2.lon, p2.lat, p2.elevation]] };
+    }
+    return { type: "Feature", properties: { label: it.label, mode: it.mode, guid: it.guid }, geometry };
+  });
+  return { type: "FeatureCollection", features };
+}
+
 function GeometryToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack }) {
   const [selection, setSelection] = useState(null);
   const [selecting, setSelecting] = useState(false);
@@ -2293,9 +2335,12 @@ function GeometryToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, on
   const [exportState, setExportState] = useState("idle"); // idle|building|done|error
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [tcUploadState, setTcUploadState] = useState("idle");
+  const [geoJsonState, setGeoJsonState] = useState("idle"); // idle|building|done|error
+  const [geoJsonDetected, setGeoJsonDetected] = useState(null); // true/false — ble CRS funnet i modellen?
 
   const modelBytesCacheRef = useRef(new Map());
   const lastWrittenModelIdRef = useRef(null);
+  const crsCacheRef = useRef(new Map());
 
   const handleObjectSelected = async (modelId, runtimeId) => {
     setSelecting(true); setError(null);
@@ -2342,6 +2387,52 @@ function GeometryToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, on
       lastWrittenModelIdRef.current = modelId;
     }
     return py;
+  };
+
+  // Leser IfcMapConversion/IfcProjectedCRS fra modellen (cachet per modell) — brukes til å
+  // konvertere lokale koordinater til ekte WGS84 lengde/bredde ved GeoJSON-eksport.
+  const detectCrs = async (modelId) => {
+    if (crsCacheRef.current.has(modelId)) return crsCacheRef.current.get(modelId);
+    const py = await ensureModelReady(modelId);
+    const resultJson = await py.runPythonAsync(`
+import ifcopenshell, json, re
+
+model = ifcopenshell.open("/geom_model.ifc")
+result = {"found": False}
+try:
+    conversions = model.by_type("IfcMapConversion")
+    if conversions:
+        mc = conversions[0]
+        crs = mc.TargetCRS
+        name = getattr(crs, "Name", "") or ""
+        desc = getattr(crs, "Description", "") or ""
+        text = f"{name} {desc}"
+        zone = None
+        m = re.search(r"258(2[89]|3[0-8])", text)
+        if m:
+            zone = int(m.group(0)) - 25800
+        else:
+            m = re.search(r"utm[^0-9]*(\\d{1,2})", text, re.IGNORECASE)
+            if m:
+                zone = int(m.group(1))
+        if zone:
+            result = {
+                "found": True,
+                "utm_zone": zone,
+                "hemisphere": "S" if "south" in text.lower() else "N",
+                "eastings": float(mc.Eastings), "northings": float(mc.Northings),
+                "orthogonal_height": float(mc.OrthogonalHeight) if mc.OrthogonalHeight is not None else 0.0,
+                "x_axis_abscissa": float(mc.XAxisAbscissa) if mc.XAxisAbscissa is not None else 1.0,
+                "x_axis_ordinate": float(mc.XAxisOrdinate) if mc.XAxisOrdinate is not None else 0.0,
+                "scale": float(mc.Scale) if mc.Scale is not None else 1.0,
+            }
+except Exception as e:
+    print("crs detect failed:", e)
+json.dumps(result)
+`);
+    const info = JSON.parse(resultJson);
+    crsCacheRef.current.set(modelId, info);
+    return info;
   };
 
   const addItem = (fields) => {
@@ -2560,6 +2651,26 @@ out.write("/geom_export.ifc")
     }
   };
 
+  const downloadGeoJson = async () => {
+    if (items.length === 0) return;
+    setGeoJsonState("building"); setError(null);
+    try {
+      const crsInfo = await detectCrs(items[0].modelId);
+      const geojson = buildGeoJson(items, crsInfo);
+      const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/geo+json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `punkter_linjer_${Date.now()}.geojson`;
+      a.click();
+      setGeoJsonDetected(!!crsInfo?.found);
+      setGeoJsonState("done");
+    } catch (e) {
+      log.error("downloadGeoJson:", e.message);
+      setError(e.message);
+      setGeoJsonState("error");
+    }
+  };
+
   const sectionLabel = (text) => (
     <div style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>{text}</div>
   );
@@ -2656,6 +2767,22 @@ out.write("/geom_export.ifc")
             </div>
             {tcUploadState === "done" && <div style={{ fontSize:11, color:M.greenDark, marginTop:6 }}>Lastet opp til Trimble Connect.</div>}
             {tcUploadState === "error" && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>Opplasting feilet.</div>}
+          </section>
+        )}
+
+        {items.length > 0 && (
+          <section>
+            {sectionLabel("Eksporter som GeoJSON")}
+            <button onClick={downloadGeoJson} disabled={geoJsonState==="building"} style={btnStyle(M.blue, true)}>
+              {geoJsonState==="building" ? <Icon.Spinner/> : <Icon.Download/>} Last ned .geojson
+            </button>
+            {geoJsonState === "done" && geoJsonDetected && (
+              <div style={{ fontSize:11, color:M.greenDark, marginTop:6 }}>Lastet ned — koordinatsystem oppdaget i modellen (IfcMapConversion).</div>
+            )}
+            {geoJsonState === "done" && !geoJsonDetected && (
+              <div style={{ fontSize:11, color:M.yellowDark, marginTop:6 }}>Lastet ned — fant ikke koordinatsystem i modellen. Antok EUREF89 UTM sone 33 (EPSG:25833, NVDB-standard). Sjekk at posisjonen stemmer.</div>
+            )}
+            {geoJsonState === "error" && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>Konvertering feilet.</div>}
           </section>
         )}
 
