@@ -722,40 +722,18 @@ function FolderPicker({ tc, onSelect, onClose, initialFolderId, initialFolderNam
         }
 
         if (anchorId) {
-          // Startmappen ovenfor er kun mappen modellen ligger i — for å kunne browse HELE
-          // prosjektets mappestruktur (ikke bare undermapper av modellens egen mappe), går vi
-          // oppover via GET /folders/{id} (mappe-metadata, IKKE /items) ett nivå av gangen og
-          // følger parentId til den mangler (roten er nådd). NB: fields=path på /items ga en
-          // ren tekststreng ("/Test ids_checker"), ikke en ID-liste som antatt tidligere — derfor
-          // brukes parentId-feltet på selve mappe-metadataen i stedet, som er en ordinær ID.
-          let rootId = anchorId;
-          try {
-            let currentId = anchorId;
-            for (let depth = 0; depth < 10; depth++) {
-              const metaRes = await fetch(
-                `https://${h}/tc/api/2.1/folders/${currentId}`,
-                { headers: { Authorization: `Bearer ${t}` } }
-              );
-              log.info(`FolderPicker: folder-metadata(${currentId}) status =`, metaRes.status);
-              if (!metaRes.ok) break;
-              const meta = await metaRes.json();
-              log.info(`FolderPicker: folder-metadata(${currentId}) parentId =`, meta.parentId);
-              if (!meta.parentId) break;
-              currentId = meta.parentId;
-              rootId = currentId;
-            }
-          } catch (e) {
-            log.warn("FolderPicker: rot-oppslag via parentId feilet, bruker startmappen direkte:", e.message);
-          }
-          await loadFolder(rootId, "Prosjektmappe", t, h);
+          // Kjent grense (bevisst valg): mappevelgeren starter i mappen modellen ligger i, og lar
+          // brukeren navigere NEDOVER i undermapper derfra — den kan ikke vise hele prosjektets
+          // mappestruktur fra roten. Alle tre forsøkte veier dit (/folders/by_path, fields=path,
+          // GET /folders/{id}-metadata) er bekreftet CORS-blokkert fra extension-origin; kun
+          // /2.1/folders/{id}/items (brukt i loadFolder) er tilgjengelig for direkte nettleserkall.
+          await loadFolder(anchorId, "Prosjektmappe", t, h);
           return;
         }
 
-        // Uten en lastet modell/hint finnes det ikke noe vi kan bruke til å slå opp prosjektets
-        // rotmappe: /2.1/folders/by_path ble forsøkt som fallback, men blokkeres av CORS fra
-        // extension-origin (bekreftet: "Failed to fetch" i konsollen — endepunktet er ikke
-        // tilgjengelig for direkte nettleserkall herfra). currentFolderId forblir null, og UI-en
-        // viser en forklarende melding i stedet for en misvisende "Ingen undermapper".
+        // Uten en lastet modell/hint finnes det ikke noe vi kan bruke til å slå opp en startmappe
+        // i det hele tatt. currentFolderId forblir null, og UI-en viser en forklarende melding i
+        // stedet for en misvisende "Ingen undermapper".
       } catch (e) {
         log.error("FolderPicker init failed:", e.message);
       } finally {
