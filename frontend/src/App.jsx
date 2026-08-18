@@ -765,16 +765,23 @@ function FolderPicker({ tc, onSelect, onClose, initialFolderId, initialFolderNam
     setLoading(true);
     const tok = t || token;
     const ho = h || host;
-    const res = await fetch(
-      `https://${ho}/tc/api/2.1/folders/${folderId}/items?tokenThumburl=false&sort=+name`,
-      { headers: { Authorization: `Bearer ${tok}` } }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      const list = (data.list || data.items || []).filter(i => i.type === "FOLDER");
-      setItems(list);
-      setCurrentFolderId(folderId);
-      if (folderName) setPath(p => [...p, { id: folderId, name: folderName }]);
+    try {
+      const res = await fetch(
+        `https://${ho}/tc/api/2.1/folders/${folderId}/items?tokenThumburl=false&sort=+name`,
+        { headers: { Authorization: `Bearer ${tok}` } }
+      );
+      log.info(`FolderPicker: loadFolder(${folderId}) status =`, res.status);
+      if (res.ok) {
+        const data = await res.json();
+        const list = (data.list || data.items || []).filter(i => i.type === "FOLDER");
+        setItems(list);
+        setCurrentFolderId(folderId);
+        if (folderName) setPath(p => [...p, { id: folderId, name: folderName }]);
+      } else {
+        log.warn(`FolderPicker: loadFolder(${folderId}) feilet, body:`, await res.text().catch(() => ""));
+      }
+    } catch (e) {
+      log.error(`FolderPicker: loadFolder(${folderId}) kastet feil:`, e.message);
     }
     setLoading(false);
   };
