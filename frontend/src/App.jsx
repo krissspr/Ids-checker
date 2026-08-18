@@ -691,29 +691,48 @@ function FolderPicker({ tc, onSelect, onClose }) {
 
   useEffect(() => {
     (async () => {
-      const t = tc.getAccessToken();
-      const project = await tc.api.project.getCurrentProject();
-      const h = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
-      setToken(t);
-      setHost(h);
+      try {
+        const t = tc.getAccessToken();
+        const project = await tc.api.project.getCurrentProject();
+        const h = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+        setToken(t);
+        setHost(h);
 
-      const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
-      if (loadedModels?.length > 0) {
-        const fileId = loadedModels[0].id;
-        const fileRes = await fetch(
-          `https://${h}/tc/api/2.1/projects/${project.id}/${fileId}/versions`,
-          { headers: { Authorization: `Bearer ${t}` } }
-        );
-        if (fileRes.ok) {
-          const data = await fileRes.json();
-          const parentId = data.items?.[0]?.parentId;
-          if (parentId) {
-            await loadFolder(parentId, "Prosjektmappe", t, h);
+        // Foretrukket start: mappen til modellen som allerede er lastet i 3D-viewer (rask, presis).
+        const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
+        if (loadedModels?.length > 0) {
+          const fileId = loadedModels[0].id;
+          const fileRes = await fetch(
+            `https://${h}/tc/api/2.1/projects/${project.id}/${fileId}/versions`,
+            { headers: { Authorization: `Bearer ${t}` } }
+          );
+          if (fileRes.ok) {
+            const data = await fileRes.json();
+            const parentId = data.items?.[0]?.parentId;
+            if (parentId) {
+              await loadFolder(parentId, "Prosjektmappe", t, h);
+              return;
+            }
+          }
+        }
+
+        // Fallback: ingen modell lastet i viewer (eller filoppslaget feilet) — hent prosjektets
+        // rotmappe direkte. Uten dette blir mappevelgeren stående uten mapper å vise når den åpnes
+        // fra et verktøy som ikke krever en valgt modell i 3D-viewer (f.eks. Egenskapssett-verktøyet).
+        const projRes = await fetch(`https://${h}/tc/api/2.0/projects/${project.id}`, { headers: { Authorization: `Bearer ${t}` } });
+        if (projRes.ok) {
+          const projData = await projRes.json();
+          const rootId = projData.rootId || projData.rootID;
+          if (rootId) {
+            await loadFolder(rootId, "Prosjektmappe", t, h);
             return;
           }
         }
+      } catch (e) {
+        log.error("FolderPicker init failed:", e.message);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     })();
   }, []);
 
