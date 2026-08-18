@@ -698,20 +698,32 @@ function FolderPicker({ tc, onSelect, onClose }) {
         setToken(t);
         setHost(h);
 
-        // Foretrukket start: mappen til modellen som allerede er lastet i 3D-viewer (rask, presis).
+        // Foretrukket start: mappen til modellen som allerede er lastet i 3D-viewer. Rå
+        // getModels("loaded")-oppføringer er ikke nødvendigvis en direkte REST-brukbar fil-ID —
+        // samme mønster som detectLoadedModels (linje ~165) brukes her: slå opp den faktiske
+        // filen via getLoadedModel() før den brukes mot /projects/.../versions.
         const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
+        log.info("FolderPicker: loadedModels =", JSON.stringify(loadedModels));
         if (loadedModels?.length > 0) {
-          const fileId = loadedModels[0].id;
-          const fileRes = await fetch(
-            `https://${h}/tc/api/2.1/projects/${project.id}/${fileId}/versions`,
-            { headers: { Authorization: `Bearer ${t}` } }
-          );
-          if (fileRes.ok) {
-            const data = await fileRes.json();
-            const parentId = data.items?.[0]?.parentId;
-            if (parentId) {
-              await loadFolder(parentId, "Prosjektmappe", t, h);
-              return;
+          const modelId = loadedModels[0].modelId || loadedModels[0].id || loadedModels[0].fileId;
+          const file = await tc.api.viewer.getLoadedModel(modelId).catch(() => null);
+          const innerFile = file?.file || file;
+          const fileId = innerFile?.id || innerFile?.versionId || file?.id || modelId;
+          log.info("FolderPicker: modelId =", modelId, "| resolved fileId =", fileId);
+          if (fileId) {
+            const fileRes = await fetch(
+              `https://${h}/tc/api/2.1/projects/${project.id}/${fileId}/versions`,
+              { headers: { Authorization: `Bearer ${t}` } }
+            );
+            log.info("FolderPicker: versions fetch status =", fileRes.status);
+            if (fileRes.ok) {
+              const data = await fileRes.json();
+              const parentId = data.items?.[0]?.parentId;
+              log.info("FolderPicker: parentId =", parentId);
+              if (parentId) {
+                await loadFolder(parentId, "Prosjektmappe", t, h);
+                return;
+              }
             }
           }
         }
