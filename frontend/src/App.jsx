@@ -681,7 +681,12 @@ function PropertyEditor({ spec, model, tc, devMode, onBack, pyUpdateProperties }
 }
 
 // ── Folder Picker Modal ───────────────────────────────────────────────────────
-function FolderPicker({ tc, onSelect, onClose }) {
+// initialFolderId/initialFolderName: valgfritt — hvis kalleren allerede har en pålitelig
+// oppløst mappe-ID (f.eks. fra loadedModels-propen, beregnet én gang av detectLoadedModels ved
+// oppstart), hoppes all intern gjenoppdagelse over. Reduserer risikoen for at re-oppslag internt
+// i FolderPicker (getModels("loaded") → getLoadedModel → ev. REST) svikter av grunner som er
+// vanskelige å diagnostisere uten en levende TC-økt.
+function FolderPicker({ tc, onSelect, onClose, initialFolderId, initialFolderName }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [path, setPath] = useState([]);
@@ -698,33 +703,27 @@ function FolderPicker({ tc, onSelect, onClose }) {
         setToken(t);
         setHost(h);
 
-        // Foretrukket start: mappen til modellen som allerede er lastet i 3D-viewer. Rå
-        // getModels("loaded")-oppføringer er ikke nødvendigvis en direkte REST-brukbar fil-ID —
-        // samme mønster som detectLoadedModels (linje ~165) brukes her: slå opp den faktiske
-        // filen via getLoadedModel() før den brukes mot /projects/.../versions.
+        if (initialFolderId) {
+          log.info("FolderPicker: bruker initialFolderId fra kaller =", initialFolderId);
+          await loadFolder(initialFolderId, initialFolderName || "Prosjektmappe", t, h);
+          return;
+        }
+
+        // Foretrukket start uten hint fra kaller: mappen til modellen som allerede er lastet i
+        // 3D-viewer. Samme mønster som detectLoadedModels (linje ~165) — parentId leses direkte
+        // av getLoadedModel()-resultatet (ren Workspace API/postMessage, ingen REST/CORS-risiko),
+        // IKKE via et ekstra REST-kall mot /projects/.../versions slik en tidligere versjon gjorde.
         const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
         log.info("FolderPicker: loadedModels =", JSON.stringify(loadedModels));
         if (loadedModels?.length > 0) {
           const modelId = loadedModels[0].modelId || loadedModels[0].id || loadedModels[0].fileId;
           const file = await tc.api.viewer.getLoadedModel(modelId).catch(() => null);
           const innerFile = file?.file || file;
-          const fileId = innerFile?.id || innerFile?.versionId || file?.id || modelId;
-          log.info("FolderPicker: modelId =", modelId, "| resolved fileId =", fileId);
-          if (fileId) {
-            const fileRes = await fetch(
-              `https://${h}/tc/api/2.1/projects/${project.id}/${fileId}/versions`,
-              { headers: { Authorization: `Bearer ${t}` } }
-            );
-            log.info("FolderPicker: versions fetch status =", fileRes.status);
-            if (fileRes.ok) {
-              const data = await fileRes.json();
-              const parentId = data.items?.[0]?.parentId;
-              log.info("FolderPicker: parentId =", parentId);
-              if (parentId) {
-                await loadFolder(parentId, "Prosjektmappe", t, h);
-                return;
-              }
-            }
+          const parentId = innerFile?.parentId || null;
+          log.info("FolderPicker: modelId =", modelId, "| parentId (fra getLoadedModel) =", parentId);
+          if (parentId) {
+            await loadFolder(parentId, "Prosjektmappe", t, h);
+            return;
           }
         }
 
@@ -2994,6 +2993,10 @@ json.dumps({"updated": updated})
 function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack }) {
   const [tab, setTab] = useState("definer");
 
+  // Allerede oppløst mappe-ID for den lastede modellen (fra detectLoadedModels ved oppstart) —
+  // sendes til FolderPicker som initialFolderId slik at den slipper å gjenoppdage dette selv.
+  const initialFolderId = loadedModels?.[0]?.parentId || null;
+
   // ── Definer
   const [psetName, setPsetName] = useState("");
   const [requireDataType, setRequireDataType] = useState(false);
@@ -3601,11 +3604,11 @@ function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack
         )}
       </div>
 
-      {showSaveFolderPicker && <FolderPicker tc={tc} onSelect={saveDefinitionToTc} onClose={() => setShowSaveFolderPicker(false)}/>}
-      {showOpenFolderPicker && <FolderPicker tc={tc} onSelect={openFolderSelected} onClose={() => setShowOpenFolderPicker(false)}/>}
-      {showAssignFolderPicker && <FolderPicker tc={tc} onSelect={openAssignFolderSelected} onClose={() => setShowAssignFolderPicker(false)}/>}
-      {showAssignSaveAsPicker && <FolderPicker tc={tc} onSelect={saveAssignAs} onClose={() => setShowAssignSaveAsPicker(false)}/>}
-      {showEditSaveAsPicker && <FolderPicker tc={tc} onSelect={saveEditAs} onClose={() => setShowEditSaveAsPicker(false)}/>}
+      {showSaveFolderPicker && <FolderPicker tc={tc} initialFolderId={initialFolderId} onSelect={saveDefinitionToTc} onClose={() => setShowSaveFolderPicker(false)}/>}
+      {showOpenFolderPicker && <FolderPicker tc={tc} initialFolderId={initialFolderId} onSelect={openFolderSelected} onClose={() => setShowOpenFolderPicker(false)}/>}
+      {showAssignFolderPicker && <FolderPicker tc={tc} initialFolderId={initialFolderId} onSelect={openAssignFolderSelected} onClose={() => setShowAssignFolderPicker(false)}/>}
+      {showAssignSaveAsPicker && <FolderPicker tc={tc} initialFolderId={initialFolderId} onSelect={saveAssignAs} onClose={() => setShowAssignSaveAsPicker(false)}/>}
+      {showEditSaveAsPicker && <FolderPicker tc={tc} initialFolderId={initialFolderId} onSelect={saveEditAs} onClose={() => setShowEditSaveAsPicker(false)}/>}
     </div>
   );
 }
