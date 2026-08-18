@@ -689,37 +689,6 @@ function FolderPicker({ tc, onSelect, onClose }) {
   const [host, setHost] = useState(null);
   const [token, setToken] = useState(null);
 
-  // Fallback når ingen modell er lastet i 3D-viewer: list prosjektets rotnivå direkte via
-  // GET /2.1/folders/by_path (projectId + path). Rotnivået har ingen ordinær mappe-ID her, så
-  // "Velg denne mappen" forblir deaktivert til brukeren har navigert inn i en undermappe —
-  // undermappene som listes har vanlige ID-er og bruker deretter samme loadFolder-flyt (ID-basert)
-  // som når man starter fra en lastet modell.
-  const loadRoot = async (t, h) => {
-    setLoading(true);
-    const tok = t || token;
-    const ho = h || host;
-    try {
-      const project = await tc.api.project.getCurrentProject();
-      let rootData = null;
-      for (const rootPath of ["/", ""]) {
-        const rootRes = await fetch(
-          `https://${ho}/tc/api/2.1/folders/by_path?projectId=${encodeURIComponent(project.id)}&path=${encodeURIComponent(rootPath)}`,
-          { headers: { Authorization: `Bearer ${tok}` } }
-        );
-        if (rootRes.ok) { rootData = await rootRes.json(); break; }
-        log.warn(`FolderPicker: by_path (path="${rootPath}") svarte ${rootRes.status}`);
-      }
-      setItems(rootData ? (rootData.list || rootData.items || []).filter(i => i.type === "FOLDER") : []);
-      setCurrentFolderId(null);
-    } catch (e) {
-      log.error("FolderPicker loadRoot failed:", e.message);
-      setItems([]);
-      setCurrentFolderId(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     (async () => {
       try {
@@ -747,11 +716,31 @@ function FolderPicker({ tc, onSelect, onClose }) {
           }
         }
 
-        // Ingen modell lastet i viewer (eller filoppslaget feilet) — fall tilbake til rotnivået.
+        // Fallback: ingen modell lastet i viewer (eller filoppslaget feilet) — finn prosjektets
+        // rotmappe-ID via GET /2.1/folders/by_path (path="/"). Ethvert element i rotmappen har
+        // samme parentId, som er selve rotmappens ID — bekreftet fra API-responsskjemaet (items[].
+        // parentId). Deretter gjenbrukes vanlig loadFolder-flyt, akkurat som for modell-basert start.
+        let rawItems = [];
+        for (const rootPath of ["/", ""]) {
+          const rootRes = await fetch(
+            `https://${h}/tc/api/2.1/folders/by_path?projectId=${encodeURIComponent(project.id)}&path=${encodeURIComponent(rootPath)}`,
+            { headers: { Authorization: `Bearer ${t}` } }
+          );
+          if (rootRes.ok) { const d = await rootRes.json(); rawItems = d.items || d.list || []; break; }
+          log.warn(`FolderPicker: by_path (path="${rootPath}") svarte ${rootRes.status}`);
+        }
+        const rootId = rawItems[0]?.parentId;
+        if (rootId) {
+          await loadFolder(rootId, "Prosjektmappe", t, h);
+          return;
+        }
+
+        // Helt tomt prosjekt (ingen filer/mapper å lese rot-ID fra) — vis tom liste.
+        setItems([]);
         setPath([{ id: null, name: "Prosjektmappe" }]);
-        await loadRoot(t, h);
       } catch (e) {
         log.error("FolderPicker init failed:", e.message);
+      } finally {
         setLoading(false);
       }
     })();
@@ -791,7 +780,7 @@ function FolderPicker({ tc, onSelect, onClose }) {
               <span style={{ cursor:"pointer", color:i===path.length-1?M.gray:M.blue }}
                 onClick={() => {
                   setPath(path.slice(0, i));
-                  if (p.id === null) loadRoot(); else loadFolder(p.id, null, null, null);
+                  loadFolder(p.id, null, null, null);
                 }}>
                 {p.name}
               </span>
