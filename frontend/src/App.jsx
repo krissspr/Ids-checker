@@ -723,26 +723,29 @@ function FolderPicker({ tc, onSelect, onClose, initialFolderId, initialFolderNam
 
         if (anchorId) {
           // Startmappen ovenfor er kun mappen modellen ligger i — for å kunne browse HELE
-          // prosjektets mappestruktur (ikke bare undermapper av modellens egen mappe), slås
-          // prosjektets faktiske rotmappe opp via denne mappens ancestor-sti. Gjenbruker det
-          // allerede fungerende /folders/{id}/items-endepunktet (ikke det CORS-blokkerte
-          // by_path) med fields=path lagt til — modellfilen selv ligger garantert i mappen, så
-          // item-listen er aldri tom, og path[0] er roten.
+          // prosjektets mappestruktur (ikke bare undermapper av modellens egen mappe), går vi
+          // oppover via GET /folders/{id} (mappe-metadata, IKKE /items) ett nivå av gangen og
+          // følger parentId til den mangler (roten er nådd). NB: fields=path på /items ga en
+          // ren tekststreng ("/Test ids_checker"), ikke en ID-liste som antatt tidligere — derfor
+          // brukes parentId-feltet på selve mappe-metadataen i stedet, som er en ordinær ID.
           let rootId = anchorId;
           try {
-            const pathRes = await fetch(
-              `https://${h}/tc/api/2.1/folders/${anchorId}/items?fields=path&pageSize=1`,
-              { headers: { Authorization: `Bearer ${t}` } }
-            );
-            log.info("FolderPicker: path-oppslag status =", pathRes.status);
-            if (pathRes.ok) {
-              const pathData = await pathRes.json();
-              const firstItem = (pathData.items || pathData.list || [])[0];
-              log.info("FolderPicker: path-oppslag item.path =", JSON.stringify(firstItem?.path));
-              if (firstItem?.path?.length) rootId = firstItem.path[0].id;
+            let currentId = anchorId;
+            for (let depth = 0; depth < 10; depth++) {
+              const metaRes = await fetch(
+                `https://${h}/tc/api/2.1/folders/${currentId}`,
+                { headers: { Authorization: `Bearer ${t}` } }
+              );
+              log.info(`FolderPicker: folder-metadata(${currentId}) status =`, metaRes.status);
+              if (!metaRes.ok) break;
+              const meta = await metaRes.json();
+              log.info(`FolderPicker: folder-metadata(${currentId}) parentId =`, meta.parentId);
+              if (!meta.parentId) break;
+              currentId = meta.parentId;
+              rootId = currentId;
             }
           } catch (e) {
-            log.warn("FolderPicker: path-oppslag feilet, bruker startmappen direkte:", e.message);
+            log.warn("FolderPicker: rot-oppslag via parentId feilet, bruker startmappen direkte:", e.message);
           }
           await loadFolder(rootId, "Prosjektmappe", t, h);
           return;
