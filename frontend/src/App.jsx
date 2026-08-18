@@ -3173,6 +3173,91 @@ function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack
     } catch (e) { log.error("saveAssignAs:", e.message); setAssignSaveState("error"); }
   };
 
+  // ── Rediger
+  const [editPreview, setEditPreview] = useState(null); // [{pset, name, values:[], allSame, display}]
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState(null);
+  const [editTouched, setEditTouched] = useState({}); // "pset||name" -> ny verdi (kun eksplisitt endrede felt sendes ved lagring)
+  const [editNewRows, setEditNewRows] = useState([]);
+  const [editWriteState, setEditWriteState] = useState("idle"); // idle|running|done|error
+  const [editWriteError, setEditWriteError] = useState(null);
+  const [editResultBytes, setEditResultBytes] = useState(null);
+  const [editSaveState, setEditSaveState] = useState("idle"); // idle|saving|done|error
+  const [showEditSaveAsPicker, setShowEditSaveAsPicker] = useState(false);
+
+  const loadEditPreview = async () => {
+    if (!selectionModelId || selectedObjs.length === 0) return;
+    setEditLoading(true); setEditError(null); setEditTouched({}); setEditNewRows([]);
+    setEditWriteState("idle"); setEditWriteError(null); setEditResultBytes(null); setEditSaveState("idle");
+    try {
+      const runtimeIds = selectedObjs.map(o => o.runtimeId);
+      const objsProps = await tc.api.viewer.getObjectProperties(selectionModelId, runtimeIds);
+      const map = new Map();
+      objsProps.forEach(op => {
+        (op.properties || []).forEach(ps => {
+          (ps.properties || []).forEach(pr => {
+            const key = `${ps.name}||${pr.name}`;
+            if (!map.has(key)) map.set(key, { pset: ps.name, name: pr.name, values: [] });
+            map.get(key).values.push(pr.value);
+          });
+        });
+      });
+      const rows = Array.from(map.values())
+        .map(r => {
+          const allSame = r.values.every(v => v === r.values[0]);
+          return { ...r, allSame, display: allSame ? (r.values[0] ?? "") : "" };
+        })
+        .sort((a, b) => a.pset.localeCompare(b.pset) || a.name.localeCompare(b.name));
+      setEditPreview(rows);
+    } catch (e) { log.error("loadEditPreview:", e.message); setEditError(e.message); }
+    finally { setEditLoading(false); }
+  };
+
+  const updateEditValue = (pset, name, value) => setEditTouched(t => ({ ...t, [`${pset}||${name}`]: value }));
+
+  const addEditNewRow = () => setEditNewRows(l => [...l, { id: `n${Date.now()}${Math.random().toString(36).slice(2, 6)}`, pset: "", name: "", value: "", dataType: "" }]);
+  const updateEditNewRow = (id, field, val) => setEditNewRows(l => l.map(r => r.id === id ? { ...r, [field]: val } : r));
+  const removeEditNewRow = (id) => setEditNewRows(l => l.filter(r => r.id !== id));
+
+  const saveEditsToSelected = async () => {
+    const triples = [];
+    Object.entries(editTouched).forEach(([key, value]) => {
+      const [pset, name] = key.split("||");
+      triples.push({ pset, name, value, dataType: "" });
+    });
+    editNewRows.forEach(r => { if (r.pset.trim() && r.name.trim()) triples.push({ pset: r.pset.trim(), name: r.name.trim(), value: r.value, dataType: r.dataType }); });
+    if (triples.length === 0) { setEditWriteError("Ingen endringer å lagre."); setEditWriteState("error"); return; }
+    setEditWriteState("running"); setEditWriteError(null); setEditResultBytes(null); setEditSaveState("idle");
+    try {
+      const py = await ensureModelReady(selectionModelId);
+      const { bytes } = await writePsetPropertiesToModel(py, selectedObjs.map(o => o.guid), triples);
+      setEditResultBytes(bytes);
+      setEditWriteState("done");
+    } catch (e) { log.error("saveEditsToSelected:", e.message); setEditWriteError(e.message); setEditWriteState("error"); }
+  };
+
+  const saveEditOverwrite = async () => {
+    if (!editResultBytes || !selectionModelId) return;
+    setEditSaveState("saving");
+    try {
+      const info = loadedModels.find(m => m.modelId === selectionModelId);
+      if (!info?.parentId) throw new Error("Fant ikke opprinnelig mappe for modellen");
+      await uploadFileToTC(tc, editResultBytes, info.name, info.parentId);
+      setEditSaveState("done");
+    } catch (e) { log.error("saveEditOverwrite:", e.message); setEditSaveState("error"); }
+  };
+
+  const saveEditAs = async (folder) => {
+    setShowEditSaveAsPicker(false);
+    if (!editResultBytes || !selectionModelId) return;
+    setEditSaveState("saving");
+    try {
+      const info = loadedModels.find(m => m.modelId === selectionModelId);
+      await uploadFileToTC(tc, editResultBytes, info?.name || `model_${Date.now()}.ifc`, folder.id);
+      setEditSaveState("done");
+    } catch (e) { log.error("saveEditAs:", e.message); setEditSaveState("error"); }
+  };
+
   const sectionLabel = (text) => (
     <div style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>{text}</div>
   );
@@ -3388,7 +3473,104 @@ function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack
           )
         )}
         {tab === "rediger" && (
-          <section>{sectionLabel("Rediger egenskaper")}<div style={{ fontSize:11, color:M.gray6 }}>Kommer.</div></section>
+          devMode ? (
+            <div style={{ fontSize:11, color:M.gray6, padding:12, background:M.white, borderRadius:4, border:`1px dashed ${M.gray1}` }}>
+              Ikke tilgjengelig i utviklingsmodus — krever Trimble Connect 3D-viewer.
+            </div>
+          ) : (
+            <>
+              <section>
+                {sectionLabel("Valgte objekter")}
+                <button onClick={fetchSelectedObjects} disabled={selectLoading} style={btnStyle(M.blue, true)}>
+                  {selectLoading ? <Icon.Spinner/> : null} Hent valgte objekter
+                </button>
+                <div style={{ fontSize:10, color:M.gray6, marginTop:6 }}>Velg ett eller flere objekter i TC 3D-viewer (ctrl/shift-klikk), klikk deretter denne knappen.</div>
+                {selectError && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>{selectError}</div>}
+                {selectedObjs.length > 0 && (
+                  <div style={{ marginTop:8, fontSize:11, color:M.gray6 }}>{selectedObjs.length} objekt(er) valgt.</div>
+                )}
+              </section>
+
+              {selectedObjs.length > 0 && (
+                <section>
+                  {sectionLabel("Egenskaper")}
+                  <button onClick={loadEditPreview} disabled={editLoading} style={btnStyle(M.blue, true)}>
+                    {editLoading ? <Icon.Spinner/> : null} Hent egenskaper for valgte objekter
+                  </button>
+                  {editError && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>{editError}</div>}
+                  {editPreview && (
+                    <div style={{ marginTop:8, background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, overflow:"hidden" }}>
+                      <div style={{ display:"flex", gap:6, padding:"6px 8px", background:M.grayLight, fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase" }}>
+                        <div style={{ flex:2 }}>Egenskapssett</div>
+                        <div style={{ flex:2 }}>Egenskap</div>
+                        <div style={{ flex:2 }}>Verdi</div>
+                      </div>
+                      {editPreview.length === 0 ? (
+                        <div style={{ padding:10, fontSize:11, color:M.gray6 }}>Ingen egenskaper funnet på valgte objekter.</div>
+                      ) : editPreview.map(r => {
+                        const key = `${r.pset}||${r.name}`;
+                        const touchedVal = editTouched[key];
+                        const value = touchedVal !== undefined ? touchedVal : r.display;
+                        return (
+                          <div key={key} style={{ display:"flex", gap:6, alignItems:"center", padding:"6px 8px", borderTop:`1px solid ${M.gray0}` }}>
+                            <div style={{ flex:2, fontSize:11, color:M.gray6, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.pset}</div>
+                            <div style={{ flex:2, fontSize:11, color:M.gray, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.name}</div>
+                            <input value={value} placeholder={!r.allSame ? "(ulike verdier)" : ""} onChange={e => updateEditValue(r.pset, r.name, e.target.value)}
+                              style={{ flex:2, fontSize:11, padding:"5px 7px", borderRadius:3, border:`1px solid ${touchedVal !== undefined ? M.blue : M.gray1}`, fontFamily:"inherit", minWidth:0 }}/>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {editPreview && (
+                <section>
+                  {sectionLabel(`Nye egenskaper (${editNewRows.length})`)}
+                  {editNewRows.map(r => (
+                    <div key={r.id} style={{ display:"flex", gap:6, alignItems:"center", marginBottom:6 }}>
+                      <input value={r.pset} onChange={e => updateEditNewRow(r.id, "pset", e.target.value)} placeholder="Egenskapssett"
+                        style={{ flex:2, fontSize:11, padding:"5px 7px", borderRadius:3, border:`1px solid ${M.gray1}`, fontFamily:"inherit", minWidth:0 }}/>
+                      <input value={r.name} onChange={e => updateEditNewRow(r.id, "name", e.target.value)} placeholder="Egenskap"
+                        style={{ flex:2, fontSize:11, padding:"5px 7px", borderRadius:3, border:`1px solid ${M.gray1}`, fontFamily:"inherit", minWidth:0 }}/>
+                      <input value={r.value} onChange={e => updateEditNewRow(r.id, "value", e.target.value)} placeholder="Verdi"
+                        style={{ flex:2, fontSize:11, padding:"5px 7px", borderRadius:3, border:`1px solid ${M.gray1}`, fontFamily:"inherit", minWidth:0 }}/>
+                      <select value={r.dataType} onChange={e => updateEditNewRow(r.id, "dataType", e.target.value)}
+                        style={{ flex:2, fontSize:11, padding:"5px 7px", borderRadius:3, border:`1px solid ${M.gray1}`, fontFamily:"inherit", minWidth:0 }}>
+                        {PSET_DATA_TYPES.map(dt => <option key={dt} value={dt}>{dt || "(ikke satt)"}</option>)}
+                      </select>
+                      <button onClick={() => removeEditNewRow(r.id)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:14, color:M.gray3, lineHeight:1 }}>×</button>
+                    </div>
+                  ))}
+                  <button onClick={addEditNewRow} style={btnStyle(M.blue, true)}>+ Ny egenskap</button>
+                </section>
+              )}
+
+              {editPreview && (
+                <section>
+                  {sectionLabel("Lagre endringer")}
+                  <button onClick={saveEditsToSelected} disabled={editWriteState === "running"} style={btnStyle(M.green, false)}>
+                    {editWriteState === "running" ? <Icon.Spinner color={M.white}/> : null} Lagre endringer på {selectedObjs.length} objekt(er)
+                  </button>
+                  {editWriteState === "error" && editWriteError && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>{editWriteError}</div>}
+                  {editWriteState === "done" && (
+                    <div style={{ marginTop:8 }}>
+                      <div style={{ fontSize:11, color:M.greenDark, marginBottom:6 }}>Endringer klare — lagre for å oppdatere filen i Trimble Connect.</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                        <button onClick={saveEditOverwrite} disabled={editSaveState === "saving"} style={btnStyle(M.blue, false)}>
+                          {editSaveState === "saving" ? <Icon.Spinner color={M.white}/> : null} Lagre
+                        </button>
+                        <button onClick={() => setShowEditSaveAsPicker(true)} disabled={editSaveState === "saving"} style={btnStyle(M.blue, true)}>Lagre som…</button>
+                      </div>
+                      {editSaveState === "done" && <div style={{ fontSize:11, color:M.greenDark, marginTop:6 }}>Lagret til Trimble Connect.</div>}
+                      {editSaveState === "error" && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>Lagring feilet.</div>}
+                    </div>
+                  )}
+                </section>
+              )}
+            </>
+          )
         )}
       </div>
 
@@ -3396,6 +3578,7 @@ function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack
       {showOpenFolderPicker && <FolderPicker tc={tc} onSelect={openFolderSelected} onClose={() => setShowOpenFolderPicker(false)}/>}
       {showAssignFolderPicker && <FolderPicker tc={tc} onSelect={openAssignFolderSelected} onClose={() => setShowAssignFolderPicker(false)}/>}
       {showAssignSaveAsPicker && <FolderPicker tc={tc} onSelect={saveAssignAs} onClose={() => setShowAssignSaveAsPicker(false)}/>}
+      {showEditSaveAsPicker && <FolderPicker tc={tc} onSelect={saveEditAs} onClose={() => setShowEditSaveAsPicker(false)}/>}
     </div>
   );
 }
