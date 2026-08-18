@@ -2821,8 +2821,147 @@ out.write("/geom_export.ifc")
 // ── PsetToolPage ──────────────────────────────────────────────────────────────
 const PSET_DATA_TYPES = ["", "IfcLabel", "IfcText", "IfcIdentifier", "IfcReal", "IfcInteger", "IfcBoolean", "IfcLengthMeasure", "IfcAreaMeasure", "IfcVolumeMeasure", "IfcPositiveLengthMeasure", "IfcMassMeasure", "IfcPlaneAngleMeasure", "IfcCountMeasure"];
 
+function makePsetProperty() {
+  return { id: `p${Date.now()}${Math.random().toString(36).slice(2, 6)}`, name: "", dataType: "", value: "", required: false };
+}
+
+function parsePsetCsvRow(line) {
+  const res = []; let field = "", inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { if (inQ && line[i + 1] === '"') { field += '"'; i++; } else inQ = !inQ; }
+    else if (c === ',' && !inQ) { res.push(field); field = ""; }
+    else field += c;
+  }
+  res.push(field); return res;
+}
+
+function serializePsetPropertiesCsv(props) {
+  const header = ["navn", "dataType", "verdi", "pakrevd"];
+  const rows = [header, ...props.map(p => [p.name, p.dataType, p.value, p.required ? "true" : "false"])];
+  return rows.map(r => r.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+}
+
+function parsePsetPropertiesCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return null;
+  const headers = parsePsetCsvRow(lines[0]).map(h => h.trim().toLowerCase());
+  const rows = lines.slice(1).map(l => Object.fromEntries(headers.map((h, i) => [h, parsePsetCsvRow(l)[i] ?? ""])));
+  const result = rows.filter(r => r.navn).map(r => ({
+    id: `p${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+    name: r.navn || "",
+    dataType: r.datatype || "",
+    value: r.verdi || "",
+    required: /^(true|1|ja|yes)$/i.test(r.pakrevd || ""),
+  }));
+  return result.length ? result : null;
+}
+
+async function fetchTcFolderItems(tc, folderId) {
+  const t = tc.getAccessToken();
+  const project = await tc.api.project.getCurrentProject();
+  const h = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+  const res = await fetch(`https://${h}/tc/api/2.1/folders/${folderId}/items?tokenThumburl=false&sort=+name`, { headers: { Authorization: `Bearer ${t}` } });
+  if (!res.ok) throw new Error(`Kunne ikke liste mappeinnhold: ${res.status}`);
+  const data = await res.json();
+  return data.list || data.items || [];
+}
+
+async function downloadTcFileText(tc, fileId) {
+  const t = tc.getAccessToken();
+  const project = await tc.api.project.getCurrentProject();
+  const h = project?.location === "europe" ? "app21.connect.trimble.com" : "app.connect.trimble.com";
+  const urlRes = await fetch(`https://${h}/tc/api/2.0/files/fs/${fileId}/downloadurl`, { headers: { Authorization: `Bearer ${t}` } });
+  if (!urlRes.ok) throw new Error(`Kunne ikke hente nedlastings-URL: ${urlRes.status}`);
+  const { url } = await urlRes.json();
+  const dlRes = await fetch(url);
+  if (!dlRes.ok) throw new Error(`Nedlasting feilet: ${dlRes.status}`);
+  return dlRes.text();
+}
+
 function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack }) {
   const [tab, setTab] = useState("definer");
+
+  // ── Definer
+  const [psetName, setPsetName] = useState("");
+  const [requireDataType, setRequireDataType] = useState(false);
+  const [properties, setProperties] = useState(() => [makePsetProperty()]);
+  const [showSaveFolderPicker, setShowSaveFolderPicker] = useState(false);
+  const [saveState, setSaveState] = useState("idle"); // idle|saving|done|error
+  const [saveError, setSaveError] = useState(null);
+  const [showOpenFolderPicker, setShowOpenFolderPicker] = useState(false);
+  const [openFolder, setOpenFolder] = useState(null);
+  const [openItems, setOpenItems] = useState(null);
+  const [openLoading, setOpenLoading] = useState(false);
+  const [openError, setOpenError] = useState(null);
+  const [csvImportError, setCsvImportError] = useState(null);
+
+  const addProperty = () => setProperties(p => [...p, makePsetProperty()]);
+  const removeProperty = (id) => setProperties(p => p.length > 1 ? p.filter(x => x.id !== id) : p);
+  const updateProperty = (id, field, val) => setProperties(p => p.map(x => x.id === id ? { ...x, [field]: val } : x));
+
+  const definitionObject = () => ({
+    name: psetName.trim(),
+    requireDataType,
+    properties: properties.filter(p => p.name.trim()).map(p => ({ name: p.name.trim(), dataType: p.dataType, value: p.value, required: !!p.required })),
+  });
+
+  const saveDefinitionToTc = async (folder) => {
+    setShowSaveFolderPicker(false);
+    const namedProps = properties.filter(p => p.name.trim());
+    if (!psetName.trim()) { setSaveState("error"); setSaveError("Gi egenskapssettet et navn før lagring."); return; }
+    if (!namedProps.length) { setSaveState("error"); setSaveError("Legg til minst én egenskap før lagring."); return; }
+    if (requireDataType && namedProps.some(p => !p.dataType)) { setSaveState("error"); setSaveError("Alle egenskaper må ha en datatype når «Krev datatype» er aktivert."); return; }
+    setSaveState("saving"); setSaveError(null);
+    try {
+      const json = JSON.stringify(definitionObject(), null, 2);
+      const filename = `${psetName.trim().replace(/[^a-z0-9æøå_-]+/gi, "_")}.json`;
+      await uploadFileToTC(tc, new TextEncoder().encode(json), filename, folder.id);
+      setSaveState("done");
+    } catch (e) { log.error("saveDefinitionToTc:", e.message); setSaveState("error"); setSaveError(e.message); }
+  };
+
+  const openFolderSelected = async (folder) => {
+    setShowOpenFolderPicker(false); setOpenFolder(folder); setOpenLoading(true); setOpenError(null);
+    try {
+      const items = await fetchTcFolderItems(tc, folder.id);
+      setOpenItems(items.filter(i => i.type !== "FOLDER" && i.name?.toLowerCase().endsWith(".json")));
+    } catch (e) { setOpenError(e.message); } finally { setOpenLoading(false); }
+  };
+
+  const loadDefinitionFromTc = async (item) => {
+    setOpenError(null);
+    try {
+      const text = await downloadTcFileText(tc, item.id);
+      const def = JSON.parse(text);
+      setPsetName(def.name || "");
+      setRequireDataType(!!def.requireDataType);
+      setProperties((def.properties && def.properties.length ? def.properties : [{}]).map(p => ({
+        id: `p${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+        name: p.name || "", dataType: p.dataType || "", value: p.value || "", required: !!p.required,
+      })));
+      setOpenItems(null); setOpenFolder(null);
+    } catch (e) { setOpenError(e.message); }
+  };
+
+  const downloadCsvTemplate = () => {
+    const blob = new Blob([serializePsetPropertiesCsv(properties)], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(psetName.trim() || "egenskapssett").replace(/[^a-z0-9æøå_-]+/gi, "_")}.csv`;
+    a.click();
+  };
+
+  const uploadCsvFromPc = (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = parsePsetPropertiesCsv(ev.target.result);
+      if (result) { setProperties(result); setCsvImportError(null); } else setCsvImportError("Ugyldig CSV-format");
+    };
+    reader.readAsText(f);
+    e.target.value = "";
+  };
   const sectionLabel = (text) => (
     <div style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>{text}</div>
   );
@@ -2853,7 +2992,91 @@ function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack
         )}
 
         {tab === "definer" && (
-          <section>{sectionLabel("Definer egenskapssett")}<div style={{ fontSize:11, color:M.gray6 }}>Kommer.</div></section>
+          <>
+            <section>
+              {sectionLabel("Egenskapssett")}
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                <input value={psetName} onChange={e => setPsetName(e.target.value)} placeholder="Navn på egenskapssett (f.eks. Pset_Dorer)"
+                  style={{ fontSize:12, padding:"7px 9px", borderRadius:4, border:`1px solid ${M.gray1}`, fontFamily:"inherit" }}/>
+                <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:M.gray6 }}>
+                  <input type="checkbox" checked={requireDataType} onChange={e => setRequireDataType(e.target.checked)}/>
+                  Krev datatype på alle egenskaper
+                </label>
+              </div>
+            </section>
+
+            <section>
+              {sectionLabel(`Egenskaper (${properties.length})`)}
+              <div style={{ background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, overflow:"hidden" }}>
+                <div style={{ display:"flex", gap:6, padding:"6px 8px", background:M.grayLight, fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase" }}>
+                  <div style={{ flex:2 }}>Navn</div>
+                  <div style={{ flex:2 }}>Datatype{requireDataType ? " *" : ""}</div>
+                  <div style={{ flex:2 }}>Standardverdi</div>
+                  <div style={{ width:56, textAlign:"center" }}>Påkrevd</div>
+                  <div style={{ width:18 }}/>
+                </div>
+                {properties.map(p => (
+                  <div key={p.id} style={{ display:"flex", gap:6, alignItems:"center", padding:"6px 8px", borderTop:`1px solid ${M.gray0}` }}>
+                    <input value={p.name} onChange={e => updateProperty(p.id, "name", e.target.value)} placeholder="Egenskapsnavn"
+                      style={{ flex:2, fontSize:11, padding:"5px 7px", borderRadius:3, border:`1px solid ${M.gray1}`, fontFamily:"inherit", minWidth:0 }}/>
+                    <select value={p.dataType} onChange={e => updateProperty(p.id, "dataType", e.target.value)}
+                      style={{ flex:2, fontSize:11, padding:"5px 7px", borderRadius:3, border:`1px solid ${requireDataType && !p.dataType ? M.red : M.gray1}`, fontFamily:"inherit", minWidth:0 }}>
+                      {PSET_DATA_TYPES.map(dt => <option key={dt} value={dt}>{dt || "(ikke satt)"}</option>)}
+                    </select>
+                    <input value={p.value} onChange={e => updateProperty(p.id, "value", e.target.value)} placeholder="Valgfri"
+                      style={{ flex:2, fontSize:11, padding:"5px 7px", borderRadius:3, border:`1px solid ${M.gray1}`, fontFamily:"inherit", minWidth:0 }}/>
+                    <div style={{ width:56, textAlign:"center" }}>
+                      <input type="checkbox" checked={p.required} onChange={e => updateProperty(p.id, "required", e.target.checked)}/>
+                    </div>
+                    <button onClick={() => removeProperty(p.id)} disabled={properties.length === 1}
+                      style={{ width:18, background:"none", border:"none", cursor: properties.length === 1 ? "not-allowed" : "pointer", fontSize:14, color:M.gray3, lineHeight:1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={addProperty} style={{ ...btnStyle(M.blue, true), marginTop:8 }}>+ Egenskap</button>
+            </section>
+
+            <section>
+              {sectionLabel("Lagre / åpne")}
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                <button onClick={() => setShowSaveFolderPicker(true)} disabled={!tc || saveState === "saving"} style={btnStyle(M.green, false)}>
+                  {saveState === "saving" ? <Icon.Spinner color={M.white}/> : null} Lagre egenskapssett
+                </button>
+                <button onClick={() => setShowOpenFolderPicker(true)} disabled={!tc} style={btnStyle(M.blue, true)}>Åpne eksisterende</button>
+              </div>
+              {!tc && <div style={{ fontSize:11, color:M.gray6, marginTop:6 }}>Krever Trimble Connect-tilkobling (lagres som fil i en TC-mappe).</div>}
+              {saveState === "done" && <div style={{ fontSize:11, color:M.greenDark, marginTop:6 }}>Lagret til Trimble Connect.</div>}
+              {saveState === "error" && saveError && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>{saveError}</div>}
+              {openError && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>{openError}</div>}
+              {openFolder && openItems !== null && (
+                <div style={{ marginTop:8, background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, padding:10 }}>
+                  <div style={{ fontSize:11, fontWeight:600, color:M.gray, marginBottom:6 }}>Egenskapssett i {openFolder.name}:</div>
+                  {openLoading ? (
+                    <div style={{ display:"flex", gap:6, alignItems:"center", fontSize:11, color:M.gray6 }}><Icon.Spinner/> Laster…</div>
+                  ) : openItems.length === 0 ? (
+                    <div style={{ fontSize:11, color:M.gray6 }}>Ingen egenskapssett-filer i denne mappen</div>
+                  ) : openItems.map(item => (
+                    <button key={item.id} onClick={() => loadDefinitionFromTc(item)}
+                      style={{ display:"block", width:"100%", textAlign:"left", padding:"5px 8px", marginBottom:4, borderRadius:3, border:`1px solid ${M.gray0}`, background:M.grayLight, cursor:"pointer", fontSize:11, color:M.gray, fontFamily:"inherit" }}>
+                      📄 {item.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section>
+              {sectionLabel("CSV-mal")}
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
+                <button onClick={downloadCsvTemplate} style={btnStyle(M.blue, true)}><Icon.Download/> Last ned mal (CSV)</button>
+                <label style={{ ...btnStyle(M.blue, true), display:"inline-flex" }}>
+                  Last opp fra CSV
+                  <input type="file" accept=".csv" onChange={uploadCsvFromPc} style={{ display:"none" }}/>
+                </label>
+              </div>
+              {csvImportError && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>{csvImportError}</div>}
+            </section>
+          </>
         )}
         {tab === "tildel" && (
           <section>{sectionLabel("Tildel egenskapssett til objekter")}<div style={{ fontSize:11, color:M.gray6 }}>Kommer.</div></section>
@@ -2862,6 +3085,9 @@ function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack
           <section>{sectionLabel("Rediger egenskaper")}<div style={{ fontSize:11, color:M.gray6 }}>Kommer.</div></section>
         )}
       </div>
+
+      {showSaveFolderPicker && <FolderPicker tc={tc} onSelect={saveDefinitionToTc} onClose={() => setShowSaveFolderPicker(false)}/>}
+      {showOpenFolderPicker && <FolderPicker tc={tc} onSelect={openFolderSelected} onClose={() => setShowOpenFolderPicker(false)}/>}
     </div>
   );
 }
