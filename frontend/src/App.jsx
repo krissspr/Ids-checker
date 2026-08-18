@@ -703,31 +703,52 @@ function FolderPicker({ tc, onSelect, onClose, initialFolderId, initialFolderNam
         setToken(t);
         setHost(h);
 
-        if (initialFolderId) {
-          log.info("FolderPicker: bruker initialFolderId fra kaller =", initialFolderId);
-          await loadFolder(initialFolderId, initialFolderName || "Prosjektmappe", t, h);
-          return;
-        }
-
-        // Foretrukket start uten hint fra kaller: mappen til modellen som allerede er lastet i
-        // 3D-viewer. Samme mønster som detectLoadedModels (linje ~165) — parentId leses direkte
-        // av getLoadedModel()-resultatet (ren Workspace API/postMessage, ingen REST/CORS-risiko),
-        // IKKE via et ekstra REST-kall mot /projects/.../versions slik en tidligere versjon gjorde.
-        const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
-        log.info("FolderPicker: loadedModels =", JSON.stringify(loadedModels));
-        if (loadedModels?.length > 0) {
-          const modelId = loadedModels[0].modelId || loadedModels[0].id || loadedModels[0].fileId;
-          const file = await tc.api.viewer.getLoadedModel(modelId).catch(() => null);
-          const innerFile = file?.file || file;
-          const parentId = innerFile?.parentId || null;
-          log.info("FolderPicker: modelId =", modelId, "| parentId (fra getLoadedModel) =", parentId);
-          if (parentId) {
-            await loadFolder(parentId, "Prosjektmappe", t, h);
-            return;
+        // Finn en startmappe: enten hintet fra kalleren, eller mappen til modellen som allerede
+        // er lastet i 3D-viewer (samme mønster som detectLoadedModels, linje ~165 — parentId
+        // leses direkte av getLoadedModel()-resultatet, ren Workspace API, ingen REST/CORS-risiko).
+        let anchorId = initialFolderId || null;
+        if (anchorId) {
+          log.info("FolderPicker: bruker initialFolderId fra kaller =", anchorId);
+        } else {
+          const loadedModels = await tc.api.viewer.getModels("loaded").catch(() => []);
+          log.info("FolderPicker: loadedModels =", JSON.stringify(loadedModels));
+          if (loadedModels?.length > 0) {
+            const modelId = loadedModels[0].modelId || loadedModels[0].id || loadedModels[0].fileId;
+            const file = await tc.api.viewer.getLoadedModel(modelId).catch(() => null);
+            const innerFile = file?.file || file;
+            anchorId = innerFile?.parentId || null;
+            log.info("FolderPicker: modelId =", modelId, "| parentId (fra getLoadedModel) =", anchorId);
           }
         }
 
-        // Uten en lastet modell finnes det ikke noe vi kan bruke til å slå opp prosjektets
+        if (anchorId) {
+          // Startmappen ovenfor er kun mappen modellen ligger i — for å kunne browse HELE
+          // prosjektets mappestruktur (ikke bare undermapper av modellens egen mappe), slås
+          // prosjektets faktiske rotmappe opp via denne mappens ancestor-sti. Gjenbruker det
+          // allerede fungerende /folders/{id}/items-endepunktet (ikke det CORS-blokkerte
+          // by_path) med fields=path lagt til — modellfilen selv ligger garantert i mappen, så
+          // item-listen er aldri tom, og path[0] er roten.
+          let rootId = anchorId;
+          try {
+            const pathRes = await fetch(
+              `https://${h}/tc/api/2.1/folders/${anchorId}/items?fields=path&pageSize=1`,
+              { headers: { Authorization: `Bearer ${t}` } }
+            );
+            log.info("FolderPicker: path-oppslag status =", pathRes.status);
+            if (pathRes.ok) {
+              const pathData = await pathRes.json();
+              const firstItem = (pathData.items || pathData.list || [])[0];
+              log.info("FolderPicker: path-oppslag item.path =", JSON.stringify(firstItem?.path));
+              if (firstItem?.path?.length) rootId = firstItem.path[0].id;
+            }
+          } catch (e) {
+            log.warn("FolderPicker: path-oppslag feilet, bruker startmappen direkte:", e.message);
+          }
+          await loadFolder(rootId, "Prosjektmappe", t, h);
+          return;
+        }
+
+        // Uten en lastet modell/hint finnes det ikke noe vi kan bruke til å slå opp prosjektets
         // rotmappe: /2.1/folders/by_path ble forsøkt som fallback, men blokkeres av CORS fra
         // extension-origin (bekreftet: "Failed to fetch" i konsollen — endepunktet er ikke
         // tilgjengelig for direkte nettleserkall herfra). currentFolderId forblir null, og UI-en
