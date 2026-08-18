@@ -716,28 +716,11 @@ function FolderPicker({ tc, onSelect, onClose }) {
           }
         }
 
-        // Fallback: ingen modell lastet i viewer (eller filoppslaget feilet) — finn prosjektets
-        // rotmappe-ID via GET /2.1/folders/by_path (path="/"). Ethvert element i rotmappen har
-        // samme parentId, som er selve rotmappens ID — bekreftet fra API-responsskjemaet (items[].
-        // parentId). Deretter gjenbrukes vanlig loadFolder-flyt, akkurat som for modell-basert start.
-        let rawItems = [];
-        for (const rootPath of ["/", ""]) {
-          const rootRes = await fetch(
-            `https://${h}/tc/api/2.1/folders/by_path?projectId=${encodeURIComponent(project.id)}&path=${encodeURIComponent(rootPath)}`,
-            { headers: { Authorization: `Bearer ${t}` } }
-          );
-          if (rootRes.ok) { const d = await rootRes.json(); rawItems = d.items || d.list || []; break; }
-          log.warn(`FolderPicker: by_path (path="${rootPath}") svarte ${rootRes.status}`);
-        }
-        const rootId = rawItems[0]?.parentId;
-        if (rootId) {
-          await loadFolder(rootId, "Prosjektmappe", t, h);
-          return;
-        }
-
-        // Helt tomt prosjekt (ingen filer/mapper å lese rot-ID fra) — vis tom liste.
-        setItems([]);
-        setPath([{ id: null, name: "Prosjektmappe" }]);
+        // Uten en lastet modell finnes det ikke noe vi kan bruke til å slå opp prosjektets
+        // rotmappe: /2.1/folders/by_path ble forsøkt som fallback, men blokkeres av CORS fra
+        // extension-origin (bekreftet: "Failed to fetch" i konsollen — endepunktet er ikke
+        // tilgjengelig for direkte nettleserkall herfra). currentFolderId forblir null, og UI-en
+        // viser en forklarende melding i stedet for en misvisende "Ingen undermapper".
       } catch (e) {
         log.error("FolderPicker init failed:", e.message);
       } finally {
@@ -793,6 +776,10 @@ function FolderPicker({ tc, onSelect, onClose }) {
           {loading ? (
             <div style={{ padding:16, display:"flex", gap:8, alignItems:"center", color:M.gray6, fontSize:12 }}>
               <Icon.Spinner/> Laster…
+            </div>
+          ) : !currentFolderId ? (
+            <div style={{ padding:12, fontSize:11, color:M.gray6 }}>
+              Fant ingen startmappe. Velg/last et objekt i 3D-viewer først, eller naviger manuelt til riktig prosjekt i Trimble Connect.
             </div>
           ) : items.length === 0 ? (
             <div style={{ padding:12, fontSize:11, color:M.gray6 }}>Ingen undermapper</div>
