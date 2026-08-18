@@ -1452,6 +1452,15 @@ function HomePage({ onSelect, tc, devMode }) {
       colorPale: "#f3f0fe",
       beta: true,
     },
+    {
+      id: "pset",
+      icon: "📋",
+      title: "Egenskapssett",
+      desc: "Definer egenskapssett-maler, tildel dem til objekter i 3D-viewer og rediger egenskapsverdier.",
+      color: M.greenDark,
+      colorPale: M.greenPale,
+      beta: true,
+    },
   ];
 
   return (
@@ -2809,6 +2818,54 @@ out.write("/geom_export.ifc")
   );
 }
 
+// ── PsetToolPage ──────────────────────────────────────────────────────────────
+const PSET_DATA_TYPES = ["", "IfcLabel", "IfcText", "IfcIdentifier", "IfcReal", "IfcInteger", "IfcBoolean", "IfcLengthMeasure", "IfcAreaMeasure", "IfcVolumeMeasure", "IfcPositiveLengthMeasure", "IfcMassMeasure", "IfcPlaneAngleMeasure", "IfcCountMeasure"];
+
+function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack }) {
+  const [tab, setTab] = useState("definer");
+  const sectionLabel = (text) => (
+    <div style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>{text}</div>
+  );
+  const btnStyle = (color, outline) => ({
+    fontSize:11, padding:"6px 12px", borderRadius:4,
+    border:`1px solid ${color}`, background: outline ? M.white : color,
+    color: outline ? color : M.white,
+    cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:5,
+  });
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", flex:1, minHeight:0, background:M.grayLight }}>
+
+      {/* Header */}
+      <div style={{ background:M.blueDark, padding:"10px 14px", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+        <button onClick={onBack} style={{ background:"none", border:"none", color:M.white, cursor:"pointer", fontSize:18, padding:0, opacity:0.8, lineHeight:1 }}>←</button>
+        <div style={{ color:M.white, fontWeight:700, fontSize:13 }}>Egenskapssett</div>
+        <span style={{ fontSize:9, fontWeight:700, background:M.yellow, color:M.gray, borderRadius:3, padding:"2px 6px", letterSpacing:"0.05em", textTransform:"uppercase" }}>Beta</span>
+      </div>
+
+      <div style={{ flex:1, overflow:"auto", padding:14, display:"flex", flexDirection:"column", gap:14 }}>
+        <TabBar value={tab} onChange={setTab} options={[["definer","Definer"],["tildel","Tildel"],["rediger","Rediger"]]}/>
+
+        {devMode && (
+          <div style={{ fontSize:11, color:M.gray6, padding:10, background:M.white, borderRadius:4, border:`1px solid ${M.gray0}` }}>
+            Tildeling og redigering krever Trimble Connect 3D-viewer — ikke tilgjengelig i utviklingsmodus. Å definere egenskapssett-maler krever i tillegg en TC-mappe å lagre til.
+          </div>
+        )}
+
+        {tab === "definer" && (
+          <section>{sectionLabel("Definer egenskapssett")}<div style={{ fontSize:11, color:M.gray6 }}>Kommer.</div></section>
+        )}
+        {tab === "tildel" && (
+          <section>{sectionLabel("Tildel egenskapssett til objekter")}<div style={{ fontSize:11, color:M.gray6 }}>Kommer.</div></section>
+        )}
+        {tab === "rediger" && (
+          <section>{sectionLabel("Rediger egenskaper")}<div style={{ fontSize:11, color:M.gray6 }}>Kommer.</div></section>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function IDSChecker() {
   const [page, setPage] = useState("home");
@@ -3112,6 +3169,22 @@ export default function IDSChecker() {
       <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
         {globalStyle}
         <GeometryToolPage
+          tc={tc}
+          devMode={devMode}
+          loadedModels={loadedModels}
+          loadPyodide={loadPyodide}
+          pyStatus={pyStatus}
+          onBack={() => setPage("home")}
+        />
+      </div>
+    );
+  }
+
+  if (page === "pset") {
+    return (
+      <div style={{ fontFamily:"'Open Sans','Roboto',sans-serif", minHeight:"100vh", color:M.gray, display:"flex", flexDirection:"column" }}>
+        {globalStyle}
+        <PsetToolPage
           tc={tc}
           devMode={devMode}
           loadedModels={loadedModels}
