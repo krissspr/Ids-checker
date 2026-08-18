@@ -2879,6 +2879,91 @@ async function downloadTcFileText(tc, fileId) {
   return dlRes.text();
 }
 
+// Skriver en liste egenskaps-triplett (pset/navn/verdi/datatype) til de gitte GUID-ene i
+// den modellen som allerede er skrevet til /pset_model.ifc i Pyodide-filsystemet (se ensureModelReady).
+// Gjenbruker samme cast_value/pset.add_pset/pset.edit_pset-mønster som UPDATE_PY i pyodide-worker.js
+// og runAllRules i PropertyEditorPage.
+async function writePsetPropertiesToModel(py, guids, propTriples) {
+  py.globals.set("PSET_GUIDS_JSON", JSON.stringify(guids));
+  py.globals.set("PSET_PROPS_JSON", JSON.stringify(propTriples));
+  const resultJson = await py.runPythonAsync(`
+import json, ifcopenshell, ifcopenshell.api, ifcopenshell.util.element
+
+model = ifcopenshell.open("/pset_model.ifc")
+try:
+    schema_obj = ifcopenshell.ifcopenshell_wrapper.schema_by_name(model.schema_identifier)
+except Exception:
+    schema_obj = None
+
+def cast_value(value, data_type):
+    if value is None or value == "":
+        return None
+    if not data_type:
+        return value
+    dt = data_type.strip()
+    if schema_obj:
+        try:
+            ifc_type = schema_obj.declaration_by_name(dt)
+            if ifc_type:
+                return ifc_type(value)
+        except Exception:
+            pass
+    if dt in ("IfcReal","IfcLengthMeasure","IfcAreaMeasure","IfcVolumeMeasure","IfcMassMeasure","IfcPositiveLengthMeasure","IfcPlaneAngleMeasure"):
+        return float(value)
+    if dt in ("IfcInteger","IfcCountMeasure"):
+        return int(value)
+    if dt == "IfcBoolean":
+        return str(value).lower() in ("true","1","ja","yes")
+    if dt in ("IfcText","IfcIdentifier"):
+        try:
+            return model.create_entity(dt, str(value))
+        except Exception:
+            pass
+    return value
+
+guids = json.loads(PSET_GUIDS_JSON)
+props = json.loads(PSET_PROPS_JSON)
+
+by_pset = {}
+for p in props:
+    by_pset.setdefault(p.get("pset", ""), []).append(p)
+
+updated = 0
+for guid in guids:
+    try:
+        ent = model.by_guid(guid)
+    except Exception:
+        continue
+    psets_data = ifcopenshell.util.element.get_psets(ent)
+    for pset_name, plist in by_pset.items():
+        if not pset_name:
+            continue
+        values = {}
+        for p in plist:
+            name = p.get("name", "")
+            if not name:
+                continue
+            try:
+                values[name] = cast_value(p.get("value"), p.get("dataType", ""))
+            except Exception:
+                values[name] = p.get("value")
+        if not values:
+            continue
+        if pset_name in psets_data:
+            pset_obj = model.by_id(psets_data[pset_name]["id"])
+        else:
+            pset_obj = ifcopenshell.api.run("pset.add_pset", model, product=ent, name=pset_name)
+        ifcopenshell.api.run("pset.edit_pset", model, pset=pset_obj, properties=values)
+    updated += 1
+
+model.write("/pset_output.ifc")
+json.dumps({"updated": updated})
+`);
+  const data = JSON.parse(resultJson);
+  const bytes = await py.FS.readFile("/pset_output.ifc");
+  return { bytes, updated: data.updated };
+}
+
 function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack }) {
   const [tab, setTab] = useState("definer");
 
@@ -2962,6 +3047,132 @@ function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack
     reader.readAsText(f);
     e.target.value = "";
   };
+
+  // ── Shared: IFC-bytes for valgt modell, skrevet til Pyodide-filsystemet (gjenbrukt av Tildel og Rediger)
+  const modelBytesCacheRef = useRef(new Map());
+  const lastWrittenModelIdRef = useRef(null);
+  const ensureModelReady = async (modelId) => {
+    const py = await loadPyodide();
+    let bytes = modelBytesCacheRef.current.get(modelId);
+    if (!bytes) {
+      const info = loadedModels.find(m => m.modelId === modelId);
+      if (!info) throw new Error("Fant ikke modellinfo for valgt modell");
+      bytes = await downloadIfcBytesFromTc(tc, info);
+      modelBytesCacheRef.current.set(modelId, bytes);
+    }
+    if (lastWrittenModelIdRef.current !== modelId) {
+      py.FS.writeFile("/pset_model.ifc", bytes);
+      lastWrittenModelIdRef.current = modelId;
+    }
+    return py;
+  };
+
+  // ── Tildel
+  const [modelVisible, setModelVisible] = useState({}); // modelId -> bool, default true
+  const isModelVisible = (modelId) => modelVisible[modelId] !== false;
+  const toggleModelVisibility = async (modelId) => {
+    const next = !isModelVisible(modelId);
+    setModelVisible(v => ({ ...v, [modelId]: next }));
+    try { await tc.api.viewer.toggleModel(modelId, next); } catch (e) { log.warn("toggleModel failed:", e.message); }
+  };
+
+  const [selectedObjs, setSelectedObjs] = useState([]); // [{runtimeId, guid, name, className}]
+  const [selectionModelId, setSelectionModelId] = useState(null);
+  const [selectLoading, setSelectLoading] = useState(false);
+  const [selectError, setSelectError] = useState(null);
+
+  const fetchSelectedObjects = async () => {
+    setSelectError(null); setSelectLoading(true);
+    try {
+      const sel = await tc.api.viewer.getSelection();
+      const withObjs = (sel || []).filter(s => s.objectRuntimeIds && s.objectRuntimeIds.length > 0);
+      if (withObjs.length === 0) { setSelectedObjs([]); setSelectionModelId(null); setSelectError("Ingen objekter valgt i 3D-viewer."); return; }
+      if (withObjs.length > 1) { setSelectError("Velg objekter i kun én modell om gangen (fant valg i flere modeller)."); return; }
+      const { modelId, objectRuntimeIds } = withObjs[0];
+      const guids = await tc.api.viewer.convertToObjectIds(modelId, objectRuntimeIds);
+      const propsList = await tc.api.viewer.getObjectProperties(modelId, objectRuntimeIds).catch(() => []);
+      const rows = objectRuntimeIds.map((rid, i) => ({
+        runtimeId: rid, guid: guids[i],
+        name: propsList[i]?.product?.name || propsList[i]?.class || guids[i] || "Objekt",
+        className: propsList[i]?.class || "",
+      })).filter(r => r.guid);
+      setSelectedObjs(rows);
+      setSelectionModelId(modelId);
+    } catch (e) { log.error("fetchSelectedObjects:", e.message); setSelectError(e.message); }
+    finally { setSelectLoading(false); }
+  };
+
+  const [assignDef, setAssignDef] = useState(null);
+  const [showAssignFolderPicker, setShowAssignFolderPicker] = useState(false);
+  const [assignFolder, setAssignFolder] = useState(null);
+  const [assignItems, setAssignItems] = useState(null);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignError, setAssignError] = useState(null);
+
+  const openAssignFolderSelected = async (folder) => {
+    setShowAssignFolderPicker(false); setAssignFolder(folder); setAssignLoading(true); setAssignError(null);
+    try {
+      const items = await fetchTcFolderItems(tc, folder.id);
+      setAssignItems(items.filter(i => i.type !== "FOLDER" && i.name?.toLowerCase().endsWith(".json")));
+    } catch (e) { setAssignError(e.message); } finally { setAssignLoading(false); }
+  };
+
+  const loadAssignDef = async (item) => {
+    setAssignError(null);
+    try {
+      const text = await downloadTcFileText(tc, item.id);
+      const def = JSON.parse(text);
+      setAssignDef({
+        name: def.name || "",
+        requireDataType: !!def.requireDataType,
+        properties: (def.properties || []).map(p => ({ name: p.name || "", dataType: p.dataType || "", value: p.value || "", required: !!p.required })),
+      });
+      setAssignItems(null); setAssignFolder(null);
+    } catch (e) { setAssignError(e.message); }
+  };
+
+  const requiredMissing = assignDef ? assignDef.properties.filter(p => p.required && !p.value) : [];
+
+  const [assignWriteState, setAssignWriteState] = useState("idle"); // idle|running|done|error
+  const [assignWriteError, setAssignWriteError] = useState(null);
+  const [assignResultBytes, setAssignResultBytes] = useState(null);
+  const [assignSaveState, setAssignSaveState] = useState("idle"); // idle|saving|done|error
+  const [showAssignSaveAsPicker, setShowAssignSaveAsPicker] = useState(false);
+
+  const assignToSelected = async () => {
+    if (!assignDef || !selectionModelId || selectedObjs.length === 0) return;
+    setAssignWriteState("running"); setAssignWriteError(null); setAssignResultBytes(null); setAssignSaveState("idle");
+    try {
+      const py = await ensureModelReady(selectionModelId);
+      const triples = assignDef.properties.map(p => ({ pset: assignDef.name, name: p.name, value: p.value, dataType: p.dataType }));
+      const { bytes } = await writePsetPropertiesToModel(py, selectedObjs.map(o => o.guid), triples);
+      setAssignResultBytes(bytes);
+      setAssignWriteState("done");
+    } catch (e) { log.error("assignToSelected:", e.message); setAssignWriteError(e.message); setAssignWriteState("error"); }
+  };
+
+  const saveAssignOverwrite = async () => {
+    if (!assignResultBytes || !selectionModelId) return;
+    setAssignSaveState("saving");
+    try {
+      const info = loadedModels.find(m => m.modelId === selectionModelId);
+      if (!info?.parentId) throw new Error("Fant ikke opprinnelig mappe for modellen");
+      await uploadFileToTC(tc, assignResultBytes, info.name, info.parentId);
+      setAssignSaveState("done");
+    } catch (e) { log.error("saveAssignOverwrite:", e.message); setAssignSaveState("error"); }
+  };
+
+  const saveAssignAs = async (folder) => {
+    setShowAssignSaveAsPicker(false);
+    if (!assignResultBytes || !selectionModelId) return;
+    setAssignSaveState("saving");
+    try {
+      const info = loadedModels.find(m => m.modelId === selectionModelId);
+      await uploadFileToTC(tc, assignResultBytes, info?.name || `model_${Date.now()}.ifc`, folder.id);
+      setAssignSaveState("done");
+    } catch (e) { log.error("saveAssignAs:", e.message); setAssignSaveState("error"); }
+  };
+
   const sectionLabel = (text) => (
     <div style={{ fontSize:10, fontWeight:700, color:M.gray6, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>{text}</div>
   );
@@ -3079,7 +3290,102 @@ function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack
           </>
         )}
         {tab === "tildel" && (
-          <section>{sectionLabel("Tildel egenskapssett til objekter")}<div style={{ fontSize:11, color:M.gray6 }}>Kommer.</div></section>
+          devMode ? (
+            <div style={{ fontSize:11, color:M.gray6, padding:12, background:M.white, borderRadius:4, border:`1px dashed ${M.gray1}` }}>
+              Ikke tilgjengelig i utviklingsmodus — krever Trimble Connect 3D-viewer.
+            </div>
+          ) : (
+            <>
+              <section>
+                {sectionLabel(`Modeller (${loadedModels.length})`)}
+                {loadedModels.length === 0 ? (
+                  <div style={{ fontSize:11, color:M.gray6 }}>Ingen IFC-modeller lastet i viewer.</div>
+                ) : (
+                  <div style={{ background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, overflow:"hidden" }}>
+                    {loadedModels.map(m => (
+                      <label key={m.modelId} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderTop:`1px solid ${M.gray0}`, fontSize:11, cursor:"pointer" }}>
+                        <input type="checkbox" checked={isModelVisible(m.modelId)} onChange={() => toggleModelVisibility(m.modelId)}/>
+                        <span style={{ flex:1, color:M.gray, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{m.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section>
+                {sectionLabel("Valgte objekter")}
+                <button onClick={fetchSelectedObjects} disabled={selectLoading} style={btnStyle(M.blue, true)}>
+                  {selectLoading ? <Icon.Spinner/> : null} Hent valgte objekter
+                </button>
+                <div style={{ fontSize:10, color:M.gray6, marginTop:6 }}>Velg ett eller flere objekter i TC 3D-viewer (ctrl/shift-klikk), klikk deretter denne knappen.</div>
+                {selectError && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>{selectError}</div>}
+                {selectedObjs.length > 0 && (
+                  <div style={{ marginTop:8, background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, padding:10 }}>
+                    <div style={{ fontSize:11, fontWeight:600, color:M.gray, marginBottom:4 }}>{selectedObjs.length} objekt(er) valgt i samme modell</div>
+                    <div style={{ maxHeight:120, overflow:"auto" }}>
+                      {selectedObjs.map(o => (
+                        <div key={o.runtimeId} style={{ fontSize:10, color:M.gray6, padding:"2px 0" }}>{o.name} <span style={{ color:M.gray3 }}>({o.className})</span></div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section>
+                {sectionLabel("Egenskapssett")}
+                <button onClick={() => setShowAssignFolderPicker(true)} disabled={!tc} style={btnStyle(M.blue, true)}>Velg egenskapssett fra TC-mappe</button>
+                {assignError && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>{assignError}</div>}
+                {assignFolder && assignItems !== null && (
+                  <div style={{ marginTop:8, background:M.white, border:`1px solid ${M.gray0}`, borderRadius:4, padding:10 }}>
+                    <div style={{ fontSize:11, fontWeight:600, color:M.gray, marginBottom:6 }}>Egenskapssett i {assignFolder.name}:</div>
+                    {assignLoading ? (
+                      <div style={{ display:"flex", gap:6, alignItems:"center", fontSize:11, color:M.gray6 }}><Icon.Spinner/> Laster…</div>
+                    ) : assignItems.length === 0 ? (
+                      <div style={{ fontSize:11, color:M.gray6 }}>Ingen egenskapssett-filer i denne mappen</div>
+                    ) : assignItems.map(item => (
+                      <button key={item.id} onClick={() => loadAssignDef(item)}
+                        style={{ display:"block", width:"100%", textAlign:"left", padding:"5px 8px", marginBottom:4, borderRadius:3, border:`1px solid ${M.gray0}`, background:M.grayLight, cursor:"pointer", fontSize:11, color:M.gray, fontFamily:"inherit" }}>
+                        📄 {item.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {assignDef && (
+                  <div style={{ marginTop:8, background:M.white, border:`1px solid ${M.green}40`, borderRadius:4, padding:10 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:M.gray, marginBottom:4 }}>{assignDef.name}</div>
+                    <div style={{ fontSize:10, color:M.gray6 }}>{assignDef.properties.length} egenskap(er)</div>
+                    {requiredMissing.length > 0 && (
+                      <div style={{ fontSize:10, color:M.yellowDark, marginTop:4 }}>Påkrevd uten standardverdi: {requiredMissing.map(p => p.name).join(", ")} — legges til tomme.</div>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              <section>
+                {sectionLabel("Legg til")}
+                <button
+                  onClick={assignToSelected}
+                  disabled={!assignDef || selectedObjs.length === 0 || assignWriteState === "running"}
+                  style={btnStyle(M.green, false)}>
+                  {assignWriteState === "running" ? <Icon.Spinner color={M.white}/> : null} Legg til på {selectedObjs.length || 0} objekt(er)
+                </button>
+                {assignWriteState === "error" && assignWriteError && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>{assignWriteError}</div>}
+                {assignWriteState === "done" && (
+                  <div style={{ marginTop:8 }}>
+                    <div style={{ fontSize:11, color:M.greenDark, marginBottom:6 }}>Egenskapssett lagt til — lagre for å oppdatere filen i Trimble Connect.</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                      <button onClick={saveAssignOverwrite} disabled={assignSaveState === "saving"} style={btnStyle(M.blue, false)}>
+                        {assignSaveState === "saving" ? <Icon.Spinner color={M.white}/> : null} Lagre
+                      </button>
+                      <button onClick={() => setShowAssignSaveAsPicker(true)} disabled={assignSaveState === "saving"} style={btnStyle(M.blue, true)}>Lagre som…</button>
+                    </div>
+                    {assignSaveState === "done" && <div style={{ fontSize:11, color:M.greenDark, marginTop:6 }}>Lagret til Trimble Connect.</div>}
+                    {assignSaveState === "error" && <div style={{ fontSize:11, color:M.redDark, marginTop:6 }}>Lagring feilet.</div>}
+                  </div>
+                )}
+              </section>
+            </>
+          )
         )}
         {tab === "rediger" && (
           <section>{sectionLabel("Rediger egenskaper")}<div style={{ fontSize:11, color:M.gray6 }}>Kommer.</div></section>
@@ -3088,6 +3394,8 @@ function PsetToolPage({ tc, devMode, loadedModels, loadPyodide, pyStatus, onBack
 
       {showSaveFolderPicker && <FolderPicker tc={tc} onSelect={saveDefinitionToTc} onClose={() => setShowSaveFolderPicker(false)}/>}
       {showOpenFolderPicker && <FolderPicker tc={tc} onSelect={openFolderSelected} onClose={() => setShowOpenFolderPicker(false)}/>}
+      {showAssignFolderPicker && <FolderPicker tc={tc} onSelect={openAssignFolderSelected} onClose={() => setShowAssignFolderPicker(false)}/>}
+      {showAssignSaveAsPicker && <FolderPicker tc={tc} onSelect={saveAssignAs} onClose={() => setShowAssignSaveAsPicker(false)}/>}
     </div>
   );
 }
