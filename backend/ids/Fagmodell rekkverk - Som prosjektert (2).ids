@@ -1,0 +1,502 @@
+<ids:ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns:ids="http://standards.buildingsmart.org/IDS">
+  <!--IDS created by Datacomp IDS Maker-->
+  <ids:info>
+    <ids:title>Fagmodell rekkverk - Prosjektert</ids:title>
+  </ids:info>
+  <ids:specifications>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Leveransedata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="Objekttype" />
+            </xs:restriction>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Rekkverk" />
+              <xs:enumeration value="Rekkverksavslutning" />
+              <xs:enumeration value="Stikningsdatalinje" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Kontrollert av</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Revisjonsbokstav</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="^(0|[A-Z])$" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Utarbeidet av</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Revisjonsdato</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="^\d{2}-\d{2}-\d{4}$" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Revisjonsstatus</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="OK" />
+              <xs:enumeration value="Under revisjon" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Leveransedata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Godkjent av</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Objektdata - Generell">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objekttdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="Objekttype" />
+            </xs:restriction>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Rekkverk" />
+              <xs:enumeration value="Rekkverksavslutning" />
+              <xs:enumeration value="Stikningsdatalinje" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Delmodell</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Prosjektspesifikk ID</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>MMI</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>400</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="optional" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Følgedokumentasjon</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Prosessdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Rekkverk" />
+              <xs:enumeration value="Rekkverksavslutning" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Prosessmengde</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Er prisbærende</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Ja" />
+              <xs:enumeration value="Nei" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Sted</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Element</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Prosessenhet</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="m" />
+              <xs:enumeration value="Stk." />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCREAL">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Prosessnummer</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:double">
+              <xs:minExclusive value="0" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Prosessdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Prosessnavn</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Rekkverk - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Rekkverk</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Styrkeklasse</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="H1" />
+              <xs:enumeration value="H2" />
+              <xs:enumeration value="H3" />
+              <xs:enumeration value="H4a" />
+              <xs:enumeration value="H4b" />
+              <xs:enumeration value="L1" />
+              <xs:enumeration value="L2" />
+              <xs:enumeration value="L3" />
+              <xs:enumeration value="L4a" />
+              <xs:enumeration value="L4b" />
+              <xs:enumeration value="N1" />
+              <xs:enumeration value="N2" />
+              <xs:enumeration value="T1" />
+              <xs:enumeration value="T2" />
+              <xs:enumeration value="T3" />
+              <xs:enumeration value="P1" />
+              <xs:enumeration value="P2" />
+              <xs:enumeration value="P3" />
+              <xs:enumeration value="P4" />
+              <xs:enumeration value="Uten styrkeklasse" />
+              <xs:enumeration value="Varierende styrkeklasse" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Arbeidsbredde</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="W1" />
+              <xs:enumeration value="W2" />
+              <xs:enumeration value="W3" />
+              <xs:enumeration value="W4" />
+              <xs:enumeration value="W5" />
+              <xs:enumeration value="W6" />
+              <xs:enumeration value="W7" />
+              <xs:enumeration value="W8" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Rekkverkstype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Rekkverk av tre" />
+              <xs:enumeration value="Rekkverk av betong" />
+              <xs:enumeration value="Rekkverk av metallskinner" />
+              <xs:enumeration value="Rekkverk av wire" />
+              <xs:enumeration value="Overgangsrekkverk" />
+              <xs:enumeration value="GS-rekkverk" />
+              <xs:enumeration value="Rørrekkverk" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Rekkverksavslutning - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Rekkverksavslutning</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Styrkeklasse</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="H1" />
+              <xs:enumeration value="H2" />
+              <xs:enumeration value="H3" />
+              <xs:enumeration value="H4a" />
+              <xs:enumeration value="H4b" />
+              <xs:enumeration value="L1" />
+              <xs:enumeration value="L2" />
+              <xs:enumeration value="L3" />
+              <xs:enumeration value="L4a" />
+              <xs:enumeration value="L4b" />
+              <xs:enumeration value="N1" />
+              <xs:enumeration value="N2" />
+              <xs:enumeration value="T1" />
+              <xs:enumeration value="T2" />
+              <xs:enumeration value="T3" />
+              <xs:enumeration value="P1" />
+              <xs:enumeration value="P2" />
+              <xs:enumeration value="P3" />
+              <xs:enumeration value="P4" />
+              <xs:enumeration value="Uten styrkeklasse" />
+              <xs:enumeration value="Varierende styrkeklasse" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Arbeidsbredde</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="W1" />
+              <xs:enumeration value="W2" />
+              <xs:enumeration value="W3" />
+              <xs:enumeration value="W4" />
+              <xs:enumeration value="W5" />
+              <xs:enumeration value="W6" />
+              <xs:enumeration value="W7" />
+              <xs:enumeration value="W8" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Avslutningstype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="Ettergivende rekkverksende" />
+              <xs:enumeration value="Støtpute" />
+              <xs:enumeration value="Forankring i sideterreng" />
+              <xs:enumeration value="Nedføring av rekkverksende" />
+              <xs:enumeration value="Avslutning utenfor sikkerhetssonen" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+    <ids:specification ifcVersion="IFC2X3 IFC4 IFC4X3_ADD2" name="Stikningsdatalinje - Objektdata">
+      <ids:applicability minOccurs="1" maxOccurs="unbounded">
+        <ids:property dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Objekttype</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <ids:simpleValue>Stikningsdatalinje</ids:simpleValue>
+          </ids:value>
+        </ids:property>
+      </ids:applicability>
+      <ids:requirements>
+        <ids:property cardinality="required" dataType="IFCTEXT">
+          <ids:propertySet>
+            <ids:simpleValue>Objektdata</ids:simpleValue>
+          </ids:propertySet>
+          <ids:baseName>
+            <ids:simpleValue>Stikningsplassering</ids:simpleValue>
+          </ids:baseName>
+          <ids:value>
+            <xs:restriction base="xs:string">
+              <xs:pattern value=".+" />
+            </xs:restriction>
+          </ids:value>
+        </ids:property>
+      </ids:requirements>
+    </ids:specification>
+  </ids:specifications>
+</ids:ids>
